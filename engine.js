@@ -32,10 +32,10 @@ const DEFAULT_WEIGHTS = {
    A raw weighted average therefore bunches everything between 15 and 75, which
    makes the tiers useless to look at. We stretch that real-world band onto
    0-100 with two stated anchors, so the number a rep sees is comparative:
-     raw 15 = an event with no relevance to us whatsoever
-     raw 75 = the realistic best case for Grain's ICP
+     raw 14 = an event with no relevance to us whatsoever
+     raw 80 = the realistic best case for Grain's ICP
    Nothing about the RANKING changes — this is presentation, not weighting. */
-const RAW_FLOOR = 15, RAW_CEIL = 75;
+const RAW_FLOOR = 14, RAW_CEIL = 80;
 const stretch = raw => clamp((raw - RAW_FLOOR) / (RAW_CEIL - RAW_FLOOR) * 100);
 
 const TIERS = [
