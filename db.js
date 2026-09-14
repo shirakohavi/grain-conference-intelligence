@@ -26,7 +26,7 @@ const DB = (() => {
     audienceSize: r.audience_size, ticketEur: Number(r.ticket_eur),
     icpDensity: r.icp_density, seniority: r.seniority,
     crossBorder: r.cross_border, strategic: r.strategic,
-    status: r.status, source: r.source, activation: r.activation,
+    status: r.status, source: r.source, activations: r.activations || [],
     attendedBefore: r.attended_before, datesConfirmed: r.dates_confirmed,
     note: r.note,
   });

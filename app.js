@@ -212,11 +212,11 @@ VIEWS_CONF = () => {
             <td><div class="tags">${c.verticals.slice(0, 3).map(tag).join("")}${
                  c.verticals.length > 3 ? `<span class="pill outline">+${c.verticals.length - 3}</span>` : ""}</div></td>
             <td onclick="event.stopPropagation()">
-              <select class="status ${c.activation ? "act-on" : "act-off"}"
-                onchange="setActivation('${c.id}', this.value)">
-                <option value=""${!c.activation ? " selected" : ""}>Not decided</option>
-                ${ACTIVATIONS.map(a => `<option${c.activation === a ? " selected" : ""}>${a}</option>`).join("")}
-              </select></td>
+              <button class="actbtn ${(c.activations || []).length ? "on" : ""}" onclick="openActivations('${c.id}', event)">
+                ${(c.activations || []).length
+                  ? (c.activations || []).map(a => `<span class="pill act">${esc(a)}</span>`).join("")
+                  : `<span class="dim">Not decided</span>`}
+              </button></td>
             <td onclick="event.stopPropagation()">
               <select class="status st-${c.status.replace(/\s/g, "")}" onchange="setStatus('${c.id}', this.value)">
                 ${STATUSES.map(o => `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
@@ -400,11 +400,45 @@ async function editEstimate(id, key, value) {
   }, 700);
 }
 
-async function setActivation(id, activation) {
+/* A small checkbox popover rather than a multi-select, because a native
+   <select multiple> needs cmd-click to deselect and nobody discovers that. */
+function openActivations(id, ev) {
+  ev.stopPropagation();
+  closeActivations();
   const c = confById(id); if (!c) return;
-  c.activation = activation; render();
-  try { await DB.sb.from("conferences").update({ activation }).eq("id", id); }
-  catch (e) { toast("Couldn't save that: " + e.message, true); }
+  const r = ev.currentTarget.getBoundingClientRect();
+  const html = `<div class="actpop" id="actpop" style="top:${Math.min(r.bottom + 6, innerHeight - 340)}px;left:${r.left}px">
+    <div class="actpop-h">How we show up at ${esc(c.name)}</div>
+    ${ACTIVATIONS.map(a => `
+      <label class="actopt">
+        <input type="checkbox" ${(c.activations || []).includes(a) ? "checked" : ""}
+          onchange="toggleActivation('${id}', ${JSON.stringify(a).replace(/"/g, "&quot;")}, this.checked)">
+        <span>${esc(a)}</span>
+      </label>`).join("")}
+    <div class="actpop-f">Pick as many as apply. Grain's Juniper Summit was a booth, a speaking slot and a side event.</div>
+  </div>`;
+  document.body.insertAdjacentHTML("beforeend", `<div class="actscrim" onclick="closeActivations()"></div>` + html);
+}
+function closeActivations() {
+  document.getElementById("actpop")?.remove();
+  document.querySelector(".actscrim")?.remove();
+}
+
+let _actTimer;
+async function toggleActivation(id, value, on) {
+  const c = confById(id); if (!c) return;
+  const cur = c.activations || [];
+  c.activations = on ? [...cur, value] : cur.filter(a => a !== value);
+  // Keep the listed order so the pills read consistently rather than by click order.
+  c.activations.sort((a, b) => ACTIVATIONS.indexOf(a) - ACTIVATIONS.indexOf(b));
+  const pop = document.getElementById("actpop");
+  render();
+  if (pop) document.body.appendChild(pop);           // survive the re-render
+  clearTimeout(_actTimer);
+  _actTimer = setTimeout(async () => {
+    try { await DB.sb.from("conferences").update({ activations: c.activations }).eq("id", id); }
+    catch (e) { toast("Couldn't save that: " + e.message, true); }
+  }, 500);
 }
 
 async function setStatus(id, status) {
@@ -1286,9 +1320,9 @@ S.newConf = null;
 
 function openAddConference() {
   S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",
-    verticals: [], audienceSize: 1000, ticketEur: 500,
+    verticals: [], activations: [], audienceSize: 1000, ticketEur: 500,
     icpDensity: 50, seniority: 50, crossBorder: 50, strategic: 50,
-    status: "New", source: "Manual", activation: "", datesConfirmed: true, note: "" };
+    status: "New", source: "Manual", datesConfirmed: true, note: "" };
   drawAddConf();
 }
 
@@ -1328,10 +1362,12 @@ function drawAddConf() {
       ${F("audienceSize", "Attendance", "number")}
       ${F("ticketEur", "Ticket (EUR)", "number")}
       <label>How we show up</label>
-      <select class="inp" onchange="S.newConf.activation=this.value;drawAddConf()">
-        <option value="">Not decided</option>
-        ${ACTIVATIONS.map(a => `<option${d.activation === a ? " selected" : ""}>${a}</option>`).join("")}
-      </select>
+      <div class="chips" style="margin:0">
+        ${ACTIVATIONS.map(a => `<button class="chip ${d.activations.includes(a) ? "on" : ""}"
+          onclick="S.newConf.activations = S.newConf.activations.includes('${a}')
+            ? S.newConf.activations.filter(x=>x!=='${a}')
+            : [...S.newConf.activations, '${a}']; drawAddConf()">${a}</button>`).join("")}
+      </div>
       <label>Source</label>
       <select class="inp" onchange="S.newConf.source=this.value;drawAddConf()">
         ${SOURCES.map(o => `<option${d.source === o ? " selected" : ""} value="${o}">${SOURCE_LABEL[o]}</option>`).join("")}
@@ -1391,7 +1427,7 @@ async function saveConference() {
       audience_size: d.audienceSize, ticket_eur: d.ticketEur,
       icp_density: d.icpDensity, seniority: d.seniority,
       cross_border: d.crossBorder, strategic: d.strategic,
-      status: d.status, source: d.source || "Manual", activation: d.activation || "",
+      status: d.status, source: d.source || "Manual", activations: d.activations || [],
       dates_confirmed: d.datesConfirmed, note: d.note,
     });
     S.newConf = null; closeDrawer(); await reload();
