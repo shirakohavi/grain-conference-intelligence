@@ -1,6 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════════════
    Conference Intelligence — UI + state.
    No framework, no build step. Open index.html and it runs.
+   REDESIGNED: Notion-style views, quiet inline filters, improved contacts grid.
    ══════════════════════════════════════════════════════════════════════════ */
 
 // Loaded from Postgres at boot. Declared here so every view can reach them.
@@ -46,14 +47,6 @@ const signalFor = name => S.mined.find(m =>
   normName(m.name).includes(normName(name).slice(0, 12)) ||
   normName(name).includes(normName(m.name).slice(0, 12)));
 
-/* Three tag colours, not twenty-six. Blue marks payments and fintech, sand
-   marks travel — Grain's two core verticals — and everything else stays grey.
-   A rep scanning the list sees vertical fit without reading a word. */
-const TAG_TONE = v =>
-  /payment|psp|acquir|open banking|fintech|banking|treasury|inclusion|stablecoin|digital assets/i.test(v) ? "blue"
-  : /travel|luxury/i.test(v) ? "sand" : "";
-const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
-
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 const fmtRange = c => c.start === c.end ? `${fmtDate(c.start)} ${c.start.slice(0, 4)}`
@@ -86,34 +79,23 @@ function humanError(m) {
 const badge = r => r?.__demo ? `<span class="badge">demo response</span>` : `<span class="badge">live</span>`;
 
 /* ── shell ───────────────────────────────────────────────────────────── */
-const IC = {
-  conferences: '<path d="M2 4h12M2 8h12M2 12h12"/>',
-  plan:        '<rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/>',
-  field:       '<path d="M8 3v10M3 8h10"/><rect x="1.5" y="1.5" width="13" height="13" rx="3"/>',
-  contacts:    '<circle cx="6" cy="6" r="2.5"/><path d="M1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><path d="M11 4.2a2.4 2.4 0 010 4.6M12.4 13.8c0-1.6-.5-2.7-1.4-3.4"/>',
-  signals:     '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14.5 14.5"/>',
-  settings:    '<path d="M2 5h12M2 11h12"/><circle cx="6" cy="5" r="1.8"/><circle cx="10.5" cy="11" r="1.8"/>',
-};
-const icon = k => `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
-
 const NAVS = [
-  ["conferences", "Conferences"],
-  ["plan",        "Plan the year"],
-  ["field",       "Field mode"],
-  ["contacts",    "Contacts"],
-  ["signals",     "Signal miner"],
-  ["settings",    "Settings"],
+  ["conferences", "◎", "Conferences"],
+  ["plan", "▤", "Plan the year"],
+  ["field", "⚡", "Field mode"],
+  ["contacts", "◆", "Contacts"],
+  ["signals", "◈", "Signal miner"],
+  ["settings", "⚙", "Settings"],
 ];
 
 function render() {
   const { review } = identities();
-  document.getElementById("nav").innerHTML = NAVS.map(([k, label]) => {
+  document.getElementById("nav").innerHTML = NAVS.map(([k, ic, label]) => {
     let cnt = "";
     if (k === "contacts" && review.length) cnt = `<span class="cnt">${review.length}</span>`;
     if (k === "plan" && S.attending.size) cnt = `<span class="cnt">${S.attending.size}</span>`;
     return `<button class="nav ${S.view === k ? "on" : ""}" onclick="go('${k}')">
-      ${icon(k)}${label}${cnt}</button>`;
+      <span class="ic">${ic}</span>${label}${cnt}</button>`;
   }).join("");
   document.getElementById("main").innerHTML = VIEWS[S.view]();
   if (VIEWS[S.view].after) VIEWS[S.view].after();
@@ -122,6 +104,7 @@ function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
 
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 1 — CONFERENCES.  Decide what's worth attending.
+   REDESIGNED: Quiet inline filter bar instead of boxed inputs.
    ══════════════════════════════════════════════════════════════════════ */
 const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "" };
 
@@ -143,75 +126,59 @@ VIEWS_CONF = () => {
 
   return `
   <div class="head">
-    <div class="spread">
-      <h1>Conferences</h1>
-      <button class="btn" onclick="openAddConference()">Add conference</button>
-    </div>
+    <h1>Conferences</h1>
     <p>Every event scored for Grain's ICP, ranked. The score is arithmetic you can audit — open any row to see
        the five inputs and what the tier actually means for a booking decision.</p>
   </div>
 
-  <div class="card pad" style="margin-bottom:14px">
-    <div class="spread">
-      <div class="row">
-        <input class="inp" style="width:190px" placeholder="Search events…" value="${esc(F.q)}"
-          oninput="F.q=this.value;render();setTimeout(()=>{const e=document.querySelector('[placeholder=\\'Search events…\\']');e.focus();e.setSelectionRange(e.value.length,e.value.length)})">
-        <select class="inp" style="width:auto" onchange="F.when=this.value;render()">
-          <option value="upcoming"${F.when === "upcoming" ? " selected" : ""}>Upcoming</option>
-          <option value="past"${F.when === "past" ? " selected" : ""}>Already happened</option>
-          <option value=""${F.when === "" ? " selected" : ""}>All</option>
-        </select>
-        <select class="inp" style="width:auto" onchange="F.region=this.value;render()">
-          <option value="">All regions</option>
-          ${regions.map(r => `<option${F.region === r ? " selected" : ""}>${r}</option>`).join("")}
-        </select>
-        <select class="inp" style="width:auto" onchange="F.vertical=this.value;render()">
-          <option value="">All verticals</option>
-          ${verts.map(v => `<option${F.vertical === v ? " selected" : ""}>${v}</option>`).join("")}
-        </select>
-        ${["", "A", "B", "C", "D"].map(t => `<button class="chip" style="${F.tier === t ? "border-color:var(--accent);color:var(--accent);font-weight:700" : ""}"
-            onclick="F.tier='${t}';render()">${t || "All tiers"}</button>`).join("")}
-      </div>
-      <div class="tiny dim">${list.length} of ${CONFERENCES.length} · ${S.attending.size} booked · ${eur(budget)} committed</div>
+  <div class="filter-bar">
+    <input class="filter-input" style="width:180px" placeholder="Search events…" value="${esc(F.q)}"
+      oninput="F.q=this.value;render();setTimeout(()=>{const e=document.querySelector('[placeholder=\\'Search events…\\']');e.focus();e.setSelectionRange(e.value.length,e.value.length)})">
+    <div class="filter-group">
+      <span class="filter-label">When</span>
+      ${["upcoming", "past", ""].map(v => `<button class="filter-control ${F.when === v ? "active" : ""}"
+        onclick="F.when='${v}';render()">${v === "upcoming" ? "Upcoming" : v === "past" ? "Already happened" : "All"}</button>`).join("")}
     </div>
+    <div class="filter-group">
+      <span class="filter-label">Region</span>
+      <select class="filter-control" style="border-bottom:1px solid var(--line)" onchange="F.region=this.value;render()">
+        <option value="">All regions</option>
+        ${regions.map(r => `<option value="${r}"${F.region === r ? " selected" : ""}>${r}</option>`).join("")}
+      </select>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Vertical</span>
+      <select class="filter-control" style="border-bottom:1px solid var(--line)" onchange="F.vertical=this.value;render()">
+        <option value="">All verticals</option>
+        ${verts.map(v => `<option value="${v}"${F.vertical === v ? " selected" : ""}>${v}</option>`).join("")}
+      </select>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Tier</span>
+      ${["", "A", "B", "C", "D"].map(t => `<button class="filter-control ${F.tier === t ? "active" : ""}"
+        onclick="F.tier='${t}';render()">${t || "All"}</button>`).join("")}
+    </div>
+    <div class="filter-stat">${list.length} of ${CONFERENCES.length} · ${S.attending.size} booked · ${eur(budget)} committed</div>
   </div>
 
   <div class="grid" style="grid-template-columns:1fr 268px;align-items:start">
     <div class="card">
-      <div class="pad" style="padding-bottom:6px"><table>
-        <thead><tr>
-          <th>Event</th>
-          <th style="width:190px">Vertical</th>
-          <th style="width:124px">Status</th>
-          <th style="width:74px">Fit</th>
-          <th style="width:124px">Dates</th>
-          <th style="width:150px">Location</th>
-          <th style="width:104px">Per contact</th>
-        </tr></thead>
+      <div class="pad" style="padding-bottom:0"><table>
+        <thead><tr><th style="width:30px"></th><th style="width:46px">Score</th><th>Event</th>
+          <th style="width:120px">When</th><th style="width:150px">Where</th><th style="width:112px">Cost / contact</th>
+          <th style="width:58px">Going</th></tr></thead>
         <tbody>${list.map(({ c, s }) => {
           const sig = signalFor(c.name);
           return `<tr onclick="openConf('${c.id}')">
-            <td>
-              <div class="cell-name">${esc(c.name)}</div>
-              <div class="row" style="gap:5px;margin-top:3px">
-                ${sig ? `<span class="pill blue">${sig.evidence === "customer" ? "customer signal" : "team signal"}</span>` : ""}
-                ${c.activation ? `<span class="pill">${esc(c.activation)}</span>` : ""}
-                ${!c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
-                ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
-              </div>
-            </td>
-            <td><div class="tags">${c.verticals.slice(0, 3).map(tag).join("")}${
-                 c.verticals.length > 3 ? `<span class="pill outline">+${c.verticals.length - 3}</span>` : ""}</div></td>
-            <td onclick="event.stopPropagation()">
-              <select class="status st-${c.status}" onchange="setStatus('${c.id}', this.value)">
-                ${["New", "Considering", "Attending", "Rejected"].map(o =>
-                  `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
-              </select></td>
-            <td><div class="row" style="gap:7px;flex-wrap:nowrap">
-              <span class="tier ${s.tier}">${s.tier}</span><span class="score">${s.total}</span></div></td>
-            <td class="tiny muted">${fmtRange(c)}</td>
-            <td class="tiny muted">${esc(c.city)}, ${esc(c.country)}</td>
-            <td class="tiny mono muted">${eur(s.eff.costPerContact)}<span class="dim"> · ${s.eff.reachable}</span></td>
+            <td><span class="tier ${s.tier}">${s.tier}</span></td>
+            <td><span class="score">${s.total}</span></td>
+            <td><div style="font-weight:600">${esc(c.name)}</div>
+                <div class="tiny dim">${c.verticals.join(" · ")}${sig ? ` · <span style="color:var(--accent);font-weight:700">★ raised by ${sig.evidence === "customer" ? "a customer" : "the team"}</span>` : ""}</div></td>
+            <td class="tiny">${fmtRange(c)}</td>
+            <td class="tiny">${esc(c.city)}, ${esc(c.country)}</td>
+            <td class="tiny mono">${eur(s.eff.costPerContact)}<span class="dim"> ×${s.eff.reachable}</span></td>
+            <td onclick="event.stopPropagation();toggleGoing('${c.id}')" style="text-align:center;font-size:16px">
+              ${S.attending.has(c.id) ? "☑" : "<span class='dim'>☐</span>"}</td>
           </tr>`; }).join("")}
         </tbody></table>
         ${list.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
@@ -313,15 +280,6 @@ function drawConf(ai) {
       ${c.start >= TODAY ? `<button class="btn ghost" onclick="closeDrawer();S.view='field';S.fieldConf='${c.id}';render()">Capture a lead here</button>` : ""}
     </div>`);
 }
-async function setStatus(id, status) {
-  const c = confById(id); if (!c) return;
-  c.status = status;
-  status === "Attending" ? S.attending.add(id) : S.attending.delete(id);
-  render();
-  try { await DB.setConferenceStatus(id, status); }
-  catch (e) { toast("Couldn't save that status: " + e.message, true); }
-}
-
 async function toggleGoing(id) {
   const going = S.attending.has(id);
   const status = going ? "New" : "Attending";
@@ -564,6 +522,7 @@ const REP_NAME = () => localStorage.getItem("rep_name") || "You";
 
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 4 — CONTACTS.  Cross-conference intelligence.
+   REDESIGNED: Repeat contacts use Notion-style grid cards with better visual hierarchy.
    Rules find the candidates, AI settles the ambiguous ones and reads the
    arc. A repeat contact is only interesting if the temperature moved.
    ══════════════════════════════════════════════════════════════════════ */
@@ -574,11 +533,7 @@ VIEWS_CONTACTS = () => {
   const enc = allEncounters().length;
 
   return `
-  <div class="head">
-    <div class="spread">
-      <h1>Contacts</h1>
-      <button class="btn" onclick="openAddPerson()">Add a person</button>
-    </div>
+  <div class="head"><h1>Contacts</h1>
     <p>${enc} encounters across ${new Set(allEncounters().map(e => e.confId)).size} conferences resolved into
        ${contacts.length} people. ${repeat.length} have been met more than once — those are the only ones where a
        pattern exists to read.</p></div>
@@ -612,24 +567,22 @@ VIEWS_CONTACTS = () => {
       Every ambiguous pair has been resolved. <button class="btn ghost sm" onclick="S.decisions={};save();render()">Reset the queue</button></div>`}
 
   <h3>Met more than once</h3>
-  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(268px,1fr));margin-bottom:22px">
+  <div class="contacts-grid" style="margin-bottom:22px">
     ${repeat.map(c => `
-      <div class="card pad" style="cursor:pointer" onclick="openContact('${c.id}')">
-        <div class="spread" style="margin-bottom:6px">
-          <div><b>${esc(c.name)}</b><div class="tiny dim">${esc(c.title)}<br>${esc(c.company)}</div></div>
-          <span class="pill" style="background:${c.tone === "good" ? "var(--accent-soft)" : c.tone === "bad" ? "#fdf0ee" : "var(--line2)"};
-            color:${c.tone === "good" ? "var(--accent-ink)" : c.tone === "bad" ? "var(--bad)" : "var(--ink2)"}">${c.pattern}</span>
+      <div class="contact-card" onclick="openContact('${c.id}')">
+        <h4>${esc(c.name)}</h4>
+        <div class="subtitle">${esc(c.title)}<br>${esc(c.company)}</div>
+        <div class="contact-meta">
+          <b>${c.touches}× over ${Math.round(c.spanDays / 30)}mo · last ${c.daysSince}d</b>
         </div>
-        <div class="row tiny dim" style="gap:6px;margin-bottom:7px">
-          <b>${c.touches}×</b> over ${Math.round(c.spanDays / 30)} months · last ${c.daysSince}d ago
+        <div class="contact-signals">
+          ${c.encounters.map(e => `<span class="contact-signal ${e.intent}" title="${esc(e.confName)}"></span>`).join("")}
         </div>
-        <div class="row" style="gap:3px;margin-bottom:7px">
-          ${c.encounters.map(e => `<span class="pill" style="padding:1px 7px;background:${e.intent === "hot" ? "#fdeceb" : e.intent === "warm" ? "#fdf6e8" : "var(--line2)"};
-            color:${e.intent === "hot" ? "var(--hot)" : e.intent === "warm" ? "var(--warm)" : "var(--cold)"}" title="${esc(e.confName)}">${e.intent}</span>`).join("<span class='dim' style='font-size:10px'>→</span>")}
+        <div style="margin-top:8px">
+          <span class="contact-pattern ${c.tone === "good" ? "good" : c.tone === "bad" ? "bad" : ""}">${c.pattern}</span>
         </div>
-        ${c.aliases.length > 1 ? `<div class="tiny dim">logged as ${c.aliases.map(esc).join(" / ")}</div>` : ""}
-        ${c.changedCompany ? `<div class="tiny" style="color:var(--c);font-weight:600">changed employer: ${c.companies.map(esc).join(" → ")}</div>` : ""}
-        ${c.repsInvolved.length > 1 ? `<div class="tiny dim">met by ${c.repsInvolved.join(", ")}</div>` : ""}
+        ${c.aliases.length > 1 ? `<div class="tiny dim" style="margin-top:6px">logged as ${c.aliases.slice(0, 2).map(esc).join(" / ")}${c.aliases.length > 2 ? "..." : ""}</div>` : ""}
+        ${c.changedCompany ? `<div class="tiny" style="color:var(--c);font-weight:600;margin-top:4px">changed employer</div>` : ""}
       </div>`).join("")}
   </div>
 
@@ -1039,306 +992,3 @@ function fatal(msg) {
     DB.onChange(() => { clearTimeout(t); t = setTimeout(() => reload().catch(() => {}), 400); });
   } catch (e) { fatal(e.message); }
 })();
-
-
-/* ══════════════════════════════════════════════════════════════════════
-   ADD A CONFERENCE
-
-   The brief asks that a non-developer can keep this up to date. A form is
-   that. The score updates live as the estimates are set, so whoever fills
-   it in can see what their judgement does to the ranking instead of
-   finding out later.
-   ══════════════════════════════════════════════════════════════════════ */
-const REGIONS = ["Europe", "North America", "Middle East", "Asia-Pacific", "Africa", "South America"];
-S.newConf = null;
-
-function openAddConference() {
-  S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",
-    verticals: [], audienceSize: 1000, ticketEur: 500,
-    icpDensity: 50, seniority: 50, crossBorder: 50, strategic: 50,
-    status: "New", source: "Manual", activation: "", datesConfirmed: true, note: "" };
-  drawAddConf();
-}
-
-function drawAddConf() {
-  const d = S.newConf;
-  // Score the draft exactly as a saved row would be scored — same function.
-  const preview = (d.start && d.end)
-    ? scoreConference({ ...d, id: "draft" }, S.weights) : null;
-  const F = (k, label, type = "text", extra = "") =>
-    `<label>${label}</label><input class="inp" type="${type}" value="${esc(d[k] ?? "")}" ${extra}
-       oninput="S.newConf['${k}']=${type === "number" ? "+this.value" : "this.value"};drawAddConf()">`;
-  const SLIDER = (k, label, help) => `
-    <div style="margin-bottom:13px">
-      <div class="spread tiny" style="margin-bottom:3px">
-        <span style="font-weight:550">${label}</span><b class="mono">${d[k]}</b></div>
-      <input type="range" min="0" max="100" value="${d[k]}" style="width:100%;accent-color:var(--accent)"
-        oninput="S.newConf['${k}']=+this.value;drawAddConf()">
-      <div class="tiny dim" style="margin-top:2px">${help}</div>
-    </div>`;
-
-  drawer(`<div class="spread"><h3 style="margin:0">Add a conference</h3>
-      <button class="x" onclick="S.newConf=null;closeDrawer()">×</button></div>
-    <div class="tiny dim" style="margin-top:4px">Saves to the shared database. Everyone sees it immediately.</div>`,
-  `
-    <div class="kv">
-      ${F("name", "Name")}
-      ${F("start", "Starts", "date")}
-      ${F("end", "Ends", "date")}
-      ${F("city", "City")}
-      ${F("country", "Country")}
-      <label>Region</label>
-      <select class="inp" onchange="S.newConf.region=this.value;drawAddConf()">
-        ${REGIONS.map(r => `<option${d.region === r ? " selected" : ""}>${r}</option>`).join("")}</select>
-      <label>Verticals</label>
-      <input class="inp" value="${esc(d.verticals.join(", "))}" placeholder="Payments, Travel Tech"
-        oninput="S.newConf.verticals=this.value.split(',').map(s=>s.trim()).filter(Boolean);drawAddConf()">
-      ${F("audienceSize", "Attendance", "number")}
-      ${F("ticketEur", "Ticket (EUR)", "number")}
-      <label>Dates</label>
-      <select class="inp" onchange="S.newConf.datesConfirmed=this.value==='yes';drawAddConf()">
-        <option value="yes"${d.datesConfirmed ? " selected" : ""}>Confirmed</option>
-        <option value="no"${!d.datesConfirmed ? " selected" : ""}>Estimated — flag it</option></select>
-      <label>Note</label>
-      <textarea class="inp" style="min-height:56px" placeholder="What's the honest read on this event?"
-        oninput="S.newConf.note=this.value">${esc(d.note)}</textarea>
-    </div>
-
-    <div>
-      <h4>Your estimates</h4>
-      <p class="tiny muted" style="margin:-4px 0 12px">These are judgement calls, not facts. The tool
-        shows its arithmetic precisely so a sales lead can disagree with an input rather than the score.</p>
-      ${SLIDER("icpDensity", "ICP density", "Share of the room that looks like a PSP, travel wholesaler, marketplace or platform carrying FX exposure")}
-      ${SLIDER("seniority", "Decision-maker seniority", "Is the person who owns the FX decision personally there, or do they send juniors?")}
-      ${SLIDER("crossBorder", "Cross-border relevance", "Is the agenda about multi-currency flow, or domestic banking?")}
-      ${SLIDER("strategic", "Embedded-partner presence", "Platforms who could resell Grain, not just buy it")}
-    </div>
-
-    ${preview ? `<div class="ai">
-      <h4>Scored live</h4>
-      <div class="row" style="gap:10px;margin-bottom:8px">
-        <span class="tier ${preview.tier}">${preview.tier}</span>
-        <span class="score" style="font-size:24px">${preview.total}</span>
-        <span class="muted" style="font-size:13px">${preview.label}</span>
-      </div>
-      <div style="font-size:13px">${preview.action}</div>
-      <div class="tiny dim" style="margin-top:8px">
-        ${eur(d.ticketEur)} ticket + ${eur(preview.eff.travel)} travel from Tel Aviv
-        ÷ ${preview.eff.reachable} reachable ICP contacts over ${preview.eff.days} day${preview.eff.days > 1 ? "s" : ""}
-        = <b>${eur(preview.eff.costPerContact)} per qualified conversation</b>
-      </div></div>`
-      : `<div class="alert">Set the dates to see the score.</div>`}
-
-    <div class="row">
-      <button class="btn" onclick="saveConference()" ${!(d.name && d.start && d.end) ? "disabled" : ""}>Add to the database</button>
-      <button class="btn ghost" onclick="S.newConf=null;closeDrawer()">Cancel</button>
-    </div>`);
-}
-
-async function saveConference() {
-  const d = S.newConf;
-  const id = d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)
-    + "-" + d.start.slice(2, 4);
-  try {
-    await DB.addConference({
-      id, name: d.name, start_date: d.start, end_date: d.end,
-      city: d.city, country: d.country, region: d.region, verticals: d.verticals,
-      audience_size: d.audienceSize, ticket_eur: d.ticketEur,
-      icp_density: d.icpDensity, seniority: d.seniority,
-      cross_border: d.crossBorder, strategic: d.strategic,
-      status: d.status, source: "Manual", activation: "",
-      dates_confirmed: d.datesConfirmed, note: d.note,
-    });
-    S.newConf = null; closeDrawer(); await reload();
-    toast(`${d.name} added.`);
-  } catch (e) { toast("Couldn't save: " + e.message, true); }
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   ADD A PERSON — email first, then ask
-
-   Shira's design, and it is the right sequence. Most tools take the whole
-   record and detect duplicates afterwards, by which time the rep has typed
-   everything twice and the person has walked off.
-
-   Here the work email goes in first and is searched immediately. If it
-   finds someone, the rep is shown who, with their history, and asked the
-   only question that matters: is this the same person? That question gets
-   answered while the human is still standing there — which is the one
-   moment anybody actually knows the answer.
-
-   Three stages: email -> confirm identity -> log the encounter.
-   ══════════════════════════════════════════════════════════════════════ */
-S.ap = null;
-
-function openAddPerson(confId) {
-  S.ap = { stage: "email", email: "", matches: [], checking: false,
-    leadId: null, known: null,
-    fields: { name: "", company: "", title: "", phone: "", segment: "PSP" },
-    confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "" };
-  drawAddPerson();
-}
-
-const SEGMENTS = ["PSP", "Travel", "Marketplace", "BNPL", "Payroll", "Stablecoin", "Treasury", "Other"];
-
-function drawAddPerson() {
-  const a = S.ap; if (!a) return;
-  const step = n => `<span class="pill ${a.stage === n ? "blue" : ""}">${n}</span>`;
-
-  let body = "";
-
-  /* ── 1. the work email, and nothing else yet ─────────────────────── */
-  if (a.stage === "email") {
-    body = `
-      <div>
-        <h4>Work email</h4>
-        <p class="tiny muted" style="margin:-4px 0 12px">One field. It gets searched against everyone
-          the team has ever met before you type anything else.</p>
-        <div class="row" style="flex-wrap:nowrap">
-          <input class="inp" id="ap_email" type="email" placeholder="name@company.com"
-            value="${esc(a.email)}" onkeydown="if(event.key==='Enter')checkEmail()">
-          <button class="btn" onclick="checkEmail()" ${a.checking ? "disabled" : ""}>
-            ${a.checking ? `<span class="spin"></span> Searching` : "Check"}</button>
-        </div>
-        <button class="chip" style="margin-top:10px" onclick="S.ap.email='';S.ap.stage='form';drawAddPerson()">
-          No email — skip</button>
-      </div>`;
-  }
-
-  /* ── 2. we found someone. ask the one question that matters ──────── */
-  if (a.stage === "matched") {
-    body = `
-      <div class="alert"><b>We have met someone with this email.</b>
-        Confirm it is the same person before this gets logged against their history.</div>
-      ${a.matches.map(m => {
-        const lead = m.lead;
-        // allEncounters() is the mapped list — it carries confName. The raw
-        // ENCOUNTERS array does not, which is how the conference name went missing.
-        const hist = allEncounters().filter(e => e.leadId === lead.id)
-          .sort((x, y) => x.at.localeCompare(y.at));
-        return `<div class="card pad">
-          <div class="spread" style="margin-bottom:8px">
-            <div><b>${esc(lead.full_name)}</b>
-              <div class="tiny dim">${esc(lead.title || "")}${lead.title ? " · " : ""}${esc(lead.company || "")}</div>
-              <div class="tiny dim">${esc(lead.work_email || "no email on file")}</div></div>
-            <span class="pill ${m.confidence >= 90 ? "blue" : "warn"}">${m.confidence}% · ${esc(m.reason)}</span>
-          </div>
-          ${hist.length ? `<h4 style="margin-top:12px">Met ${hist.length} time${hist.length > 1 ? "s" : ""}</h4>
-            ${hist.map(e => `<div class="tiny" style="padding:5px 0;border-top:1px solid var(--line-soft)">
-              <div class="spread"><b>${esc(e.confName)}</b><span class="sig ${e.intent}">${e.intent}</span></div>
-              <div class="dim">${e.at.slice(0, 10)} · logged by ${esc(e.rep)} · as ${esc(e.name)} at ${esc(e.company)}</div>
-              <div class="muted" style="margin-top:2px">"${esc(e.note)}"</div></div>`).join("")}`
-            : `<div class="tiny dim">No encounters logged yet.</div>`}
-          <div class="row" style="margin-top:12px">
-            <button class="btn" onclick="sameAs('${lead.id}')">Yes — same person</button>
-            <button class="btn ghost" onclick="S.ap.stage='form';S.ap.leadId=null;drawAddPerson()">No — someone new</button>
-          </div>
-        </div>`; }).join("")}`;
-  }
-
-  /* ── 3. a genuinely new person ───────────────────────────────────── */
-  if (a.stage === "form") {
-    const f = (k, label, ph = "") =>
-      `<label>${label}</label><input class="inp" placeholder="${ph}" value="${esc(a.fields[k])}"
-        oninput="S.ap.fields['${k}']=this.value">`;
-    body = `
-      <div class="alert good"><b>No match.</b> New person — tell us who they are.</div>
-      <div class="kv">
-        ${f("name", "Name")}
-        ${f("company", "Company")}
-        ${f("title", "Job title")}
-        ${f("phone", "Phone", "optional")}
-        <label>Segment</label>
-        <select class="inp" onchange="S.ap.fields.segment=this.value">
-          ${SEGMENTS.map(s => `<option${a.fields.segment === s ? " selected" : ""}>${s}</option>`).join("")}
-        </select>
-        <label>Email</label>
-        <input class="inp" value="${esc(a.email)}" oninput="S.ap.email=this.value">
-      </div>
-      <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()"
-        ${!a.fields.name ? "disabled" : ""}>Next — where did you meet?</button>`;
-  }
-
-  /* ── 4. the encounter itself ─────────────────────────────────────── */
-  if (a.stage === "encounter") {
-    const who = a.known ? a.known.full_name : a.fields.name;
-    const opts = CONFERENCES.filter(c => c.end >= "2026-01-01")
-      .sort((x, y) => y.start.localeCompare(x.start));
-    body = `
-      <div class="alert good"><b>${esc(who)}</b> — logging a new encounter${a.known ? " against their existing history" : ""}.</div>
-      <div class="kv">
-        <label>Conference</label>
-        <select class="inp" onchange="S.ap.confId=this.value">
-          ${opts.map(c => `<option value="${c.id}"${a.confId === c.id ? " selected" : ""}>${esc(c.name)} — ${esc(c.city)}, ${fmtDate(c.start)}</option>`).join("")}
-        </select>
-        <label>Signal</label>
-        <select class="inp" onchange="S.ap.intent=this.value">
-          ${["cold", "warm", "hot"].map(i => `<option${a.intent === i ? " selected" : ""}>${i}</option>`).join("")}
-        </select>
-        <label>Note</label>
-        <textarea class="inp" style="min-height:84px" placeholder="What did they actually say?"
-          oninput="S.ap.note=this.value">${esc(a.note)}</textarea>
-      </div>
-      <div class="tiny dim">hot = asked about price, timeline or next steps · warm = asked a real question · cold = polite, took a leaflet</div>
-      <button class="btn" onclick="savePerson()">Save encounter</button>`;
-  }
-
-  drawer(`<div class="spread"><h3 style="margin:0">Add a person</h3>
-      <button class="x" onclick="S.ap=null;closeDrawer()">×</button></div>
-    <div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("form")}${step("encounter")}</div>`,
-    body);
-}
-
-async function checkEmail() {
-  const v = document.getElementById("ap_email").value.trim();
-  if (!v) return;
-  S.ap.email = v; S.ap.checking = true; drawAddPerson();
-  try {
-    const matches = await DB.findPossibleDuplicates({ email: v });
-    S.ap.checking = false;
-    S.ap.matches = matches;
-    // A search that finds nothing is an answer too — go straight to the form.
-    S.ap.stage = matches.length ? "matched" : "form";
-    drawAddPerson();
-  } catch (e) { S.ap.checking = false; drawAddPerson(); toast("Search failed: " + e.message, true); }
-}
-
-function sameAs(leadId) {
-  S.ap.leadId = leadId;
-  S.ap.known = (S.ap.matches.find(m => m.lead.id === leadId) || {}).lead;
-  S.ap.stage = "encounter";
-  drawAddPerson();
-}
-
-async function savePerson() {
-  const a = S.ap;
-  const conf = confById(a.confId);
-  try {
-    let leadId = a.leadId;
-    if (!leadId) {
-      const lead = await DB.upsertLead({
-        full_name: a.fields.name, work_email: a.email || null,
-        company: a.fields.company || null, title: a.fields.title || null,
-        phone: a.fields.phone || null, icp_segment: a.fields.segment,
-      });
-      leadId = lead.id;
-    }
-    await DB.addEncounter({
-      lead_id: leadId, conference_id: conf.id, rep: REP_NAME(),
-      met_at: new Date().toISOString(), intent: a.intent,
-      note: a.note, raw_note: a.note,
-      name_as_given: a.known ? a.known.full_name : a.fields.name,
-      company_as_given: a.known ? a.known.company : a.fields.company,
-      title_as_given: a.known ? a.known.title : a.fields.title,
-      email_as_given: a.email || null,
-    });
-    const wasKnown = !!a.leadId;
-    S.ap = null; closeDrawer(); await reload();
-    const { contacts } = identities();
-    const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
-    toast(wasKnown && c
-      ? `Logged. ${c.name} has now been met ${c.touches} times — ${c.pattern.toLowerCase()}.`
-      : "Saved.");
-    if (wasKnown) { S.view = "contacts"; render(); }
-  } catch (e) { toast("Save failed: " + e.message, true); }
-}
