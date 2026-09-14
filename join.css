@@ -1,0 +1,57 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Stand kiosk
+
+   This page is handed to a stranger on a tablet. Two rules follow from that:
+   nothing from the platform may be visible or reachable, and every target has
+   to be thumb-sized for someone standing up holding a coffee.
+   ══════════════════════════════════════════════════════════════════════════ */
+body.kiosk{background:#2B3674;min-height:100vh;margin:0;
+  -webkit-user-select:none;user-select:none;overscroll-behavior:none}
+.k-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.k-card{background:#fff;border-radius:22px;width:100%;max-width:560px;padding:40px 36px;
+  box-shadow:0 20px 60px rgba(14,22,58,.3)}
+
+.k-brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.k-brand img{width:40px;height:40px;border-radius:11px}
+.k-brand div b{display:block;font-size:17px;color:#2B3674;letter-spacing:-.02em}
+.k-brand div span{font-size:13px;color:#8A93B2}
+
+.k-card h1{font-size:27px;line-height:1.25;margin:0 0 10px;color:#2B3674;letter-spacing:-.025em}
+.k-card p.lede{font-size:15px;color:#5C6590;margin:0 0 26px;line-height:1.55}
+
+.k-field{margin-bottom:18px}
+.k-field label{display:block;font-size:13px;font-weight:600;color:#5C6590;margin-bottom:7px}
+.k-field input{width:100%;font-size:19px;padding:15px 16px;border:1.5px solid #E1E6F3;
+  border-radius:13px;background:#fff;color:#2B3674;-webkit-appearance:none}
+.k-field input:focus{outline:0;border-color:#3D82F7;box-shadow:0 0 0 4px #E9F0FE}
+.k-field input::placeholder{color:#BFC6DC}
+.k-optional{font-weight:400;color:#A3AED0}
+
+.k-chips{display:flex;gap:9px;flex-wrap:wrap}
+.k-chip{border:1.5px solid #E1E6F3;background:#fff;border-radius:30px;padding:11px 17px;
+  font-size:15px;color:#5C6590;cursor:pointer;transition:.12s}
+.k-chip:active{transform:scale(.97)}
+.k-chip.on{border-color:#3D82F7;background:#E9F0FE;color:#12509C;font-weight:600}
+
+.k-go{width:100%;padding:19px;font-size:18px;font-weight:600;border:0;border-radius:14px;
+  background:#2B3674;color:#fff;cursor:pointer;margin-top:10px;transition:.12s}
+.k-go:disabled{background:#D5DAEA;color:#fff}
+.k-go:active:not(:disabled){transform:scale(.99)}
+
+.k-done{text-align:center;padding:26px 0}
+.k-tick{width:62px;height:62px;border-radius:50%;background:#E9F0FE;margin:0 auto 20px;
+  display:grid;place-items:center}
+.k-done h1{font-size:25px}
+.k-foot{margin-top:24px;font-size:11.5px;color:#A3AED0;text-align:center;line-height:1.6}
+
+/* Exit is a plain unlabelled corner tap, so a prospect never finds it. */
+.k-exit{position:fixed;top:0;left:0;width:56px;height:56px;opacity:0;cursor:default}
+.k-pin{display:flex;gap:9px;justify-content:center;margin:18px 0}
+.k-pin input{width:54px;height:62px;text-align:center;font-size:24px;border:1.5px solid #E1E6F3;
+  border-radius:12px;color:#2B3674}
+
+.k-setup .k-field select{width:100%;font-size:16px;padding:14px 16px;border:1.5px solid #E1E6F3;
+  border-radius:13px;background:#fff;color:#2B3674}
+.k-note{background:#F4F7FE;border-radius:12px;padding:14px 16px;font-size:13px;color:#5C6590;
+  line-height:1.6;margin-top:18px}
+@media(max-width:560px){ .k-card{padding:30px 22px;border-radius:18px} .k-card h1{font-size:23px} }

@@ -636,9 +636,16 @@ VIEWS_FIELD = () => {
   const conf = confById(S.fieldConf) || opts[0];
   const today = allEncounters().filter(e => e.confId === conf?.id).length;
   return `
-  <div class="head"><h1>Field mode</h1>
+  <div class="head">
+    <div class="spread">
+      <h1>Field mode</h1>
+      <a class="btn ghost" href="join.html" target="_blank" rel="noopener">Open the stand tablet</a>
+    </div>
     <p>One box. Say what you'd say to a colleague and keep talking, it gets structured after you hit save,
-       not while the person is standing there.</p></div>
+       not while the person is standing there.</p>
+    <p class="tiny muted" style="margin-top:6px">Or hand the tablet over: <b>the stand form</b> lets a prospect
+      type their own email while they wait, and shows them nothing else. Locked behind a PIN.</p>
+  </div>
 
   <div class="field">
     <div class="spread" style="margin-bottom:10px">
