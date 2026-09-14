@@ -342,3 +342,12 @@ th:first-child,td:first-child{min-width:220px}
 .actopt input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
 .actpop-f{font-size:10.5px;color:#9AA3C4;line-height:1.5;padding:8px 9px 4px;
   border-top:1px solid var(--line);margin-top:4px}
+
+/* Signal inbox counters */
+.stat{flex:1;min-width:0;padding:13px 15px}
+.stat b{display:block;font-size:23px;font-weight:600;letter-spacing:-.03em;line-height:1.15}
+.stat span{font-size:11.5px;color:#9AA3C4}
+.stat.warn{background:#FCF3E4;border-color:#EFDFC0}
+.stat.warn b{color:#8A6516}
+.stat.good{background:#E9F0FE;border-color:#CBDCFB}
+.stat.good b{color:#12509C}

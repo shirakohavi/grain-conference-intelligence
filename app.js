@@ -5,7 +5,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 // Loaded from Postgres at boot. Declared here so every view can reach them.
-let CONFERENCES = [], ENCOUNTERS = [], LEADS = [];
+let CONFERENCES = [], ENCOUNTERS = [], LEADS = [], SIGNALS = [];
 
 const TODAY = "2026-09-14";           // demo clock, so the seeded year reads correctly
 const LS = {
@@ -978,120 +978,174 @@ async function pushOne(id) {
    The output loops back into the Conferences tab as a ★ on the row.
    ══════════════════════════════════════════════════════════════════════ */
 VIEWS_SIGNALS = () => {
-  const known = CONFERENCES.map(c => c.name);
-  const untracked = S.mined.filter(m => !m.alreadyTracked);
-  const concerns = S.mined.filter(m => m.sentiment === "concern");
-  const custRaised = S.mined.filter(m => m.evidence === "customer");
+  const waiting = SIGNALS.filter(g => !g.processed_at);
+  const done = SIGNALS.filter(g => g.processed_at);
+  const foundAll = done.flatMap(g => (g.found || []).map(m => ({ ...m, from: g })));
+  const untracked = foundAll.filter(m => !m.alreadyTracked);
+  const customer = foundAll.filter(m => m.evidence === "customer");
+  const SRC_TONE = { "Slack": "", "Meeting notes": "sand", "Email": "blue", "Manual paste": "outline" };
+
   return `
-  <div class="head"><h1>Signal miner</h1>
-    <p>Conference decisions are already being made in Slack threads and meeting notes that nobody re-reads.
-       This pulls the events out of that text, marks who raised them, and flags the ones a
-       <b>customer</b> mentioned, which is a different quality of signal from one of us having an idea.</p></div>
+  <div class="head">
+    <div class="spread">
+      <h1>Signal miner</h1>
+      <div class="row">
+        <button class="btn ghost" onclick="openPasteSignal()">Paste something</button>
+        <button class="btn" onclick="runMiner()" ${waiting.length ? "" : "disabled"}>
+          ${waiting.length ? `Read ${waiting.length} waiting` : "Nothing waiting"}</button>
+      </div>
+    </div>
+    <p>Conference decisions get made in Slack threads and call summaries that nobody reads twice. This is the
+       inbox those land in, and the automation that reads them. It runs on a schedule; the button is only here
+       so you can watch it work.</p>
+  </div>
 
   <div class="grid" style="grid-template-columns:1fr 320px;align-items:start">
     <div>
-      <div class="card pad" style="margin-bottom:14px">
-        <div class="spread" style="margin-bottom:9px"><h3 style="margin:0">Paste anything</h3>
-          <span class="tiny dim">Slack export, meeting summary, an email thread</span></div>
-        <textarea class="inp" id="sigtext" style="min-height:132px;font-family:var(--mono);font-size:12px"
-          placeholder="Paste a Slack thread or a meeting summary…">${esc(S.sigText || "")}</textarea>
-        <div class="chips">
-          <span class="tiny dim" style="align-self:center">Load a sample:</span>
-          ${SAMPLE_SIGNALS.map((s, i) => `<button class="chip" onclick="loadSig(${i})">${esc(s.source)}</button>`).join("")}
-          <button class="chip" onclick="loadSig('all')" style="border-color:var(--accent);color:var(--accent)">All four</button>
-        </div>
-        <div class="row" style="margin-top:11px">
-          <button class="btn" id="minebtn" onclick="mine()">Find the conferences</button>
-          <button class="btn ghost" onclick="discoverNew()">Suggest events we're missing</button>
-          ${S.mined.length ? `<button class="btn ghost" onclick="S.mined=[];save();render()">Clear</button>` : ""}
-        </div>
+      <div class="row" style="gap:10px;margin-bottom:16px">
+        <div class="card pad stat"><b>${SIGNALS.length}</b><span>conversations in</span></div>
+        <div class="card pad stat"><b>${foundAll.length}</b><span>events mentioned</span></div>
+        <div class="card pad stat ${untracked.length ? "warn" : ""}"><b>${untracked.length}</b><span>we did not track</span></div>
+        <div class="card pad stat ${customer.length ? "good" : ""}"><b>${customer.length}</b><span>raised by customers</span></div>
       </div>
 
-      <div id="mineout">
-      ${S.mined.length ? `
-        <div class="card pad">
-          <div class="spread" style="margin-bottom:10px"><h3 style="margin:0">${S.mined.length} events found</h3>
-            <span class="tiny dim">${custRaised.length} raised by customers · ${concerns.length} flagged as a miss</span></div>
-          ${S.mined.map(m => {
-            const match = CONFERENCES.find(c => normName(c.name) === normName(m.name)) ||
-              CONFERENCES.find(c => normName(c.name).includes(normName(m.name).slice(0, 10)));
-            const s = match ? scoreConference(match, S.weights) : null;
-            return `<div style="border-top:1px solid var(--line2);padding:11px 0">
+      <h3>The inbox</h3>
+      <div class="card" style="margin-bottom:20px">
+        ${SIGNALS.length ? SIGNALS.map(g => `
+          <div style="padding:14px 18px;border-bottom:1px solid var(--line-soft,#F2F5FB)">
+            <div class="spread">
+              <div class="row" style="gap:7px">
+                <span class="pill ${SRC_TONE[g.source] ?? ""}">${esc(g.source)}</span>
+                <b style="font-size:13px">${esc(g.channel || "untitled")}</b>
+                <span class="tiny dim">${(g.occurred_at || g.created_at || "").slice(0, 10)}</span>
+              </div>
+              ${g.processed_at
+                ? `<span class="pill blue">read, ${(g.found || []).length} event${(g.found || []).length === 1 ? "" : "s"} found</span>`
+                : `<span class="pill warn">waiting</span>`}
+            </div>
+            <div class="tiny muted" style="margin-top:6px;white-space:pre-wrap;max-height:42px;overflow:hidden">${esc((g.body || "").slice(0, 190))}…</div>
+            ${(g.found || []).length ? `<div class="tags" style="margin-top:8px">
+              ${(g.found || []).map(m => `<span class="pill ${m.evidence === "customer" ? "blue" : ""}">${esc(m.name)}</span>`).join("")}
+            </div>` : ""}
+          </div>`).join("") : `<div class="empty">Nothing in the inbox yet.</div>`}
+      </div>
+
+      <div id="mineout"></div>
+
+      ${foundAll.length ? `
+        <h3>What it found</h3>
+        <div class="card">
+          ${foundAll.map(m => {
+            const match = CONFERENCES.find(c => normName(c.name) === normName(m.name))
+                       || CONFERENCES.find(c => normName(c.name).includes(normName(m.name).slice(0, 10)));
+            const sc = match ? scoreConference(match, S.weights) : null;
+            return `<div style="padding:13px 18px;border-bottom:1px solid var(--line-soft,#F2F5FB)">
               <div class="spread">
-                <div class="row" style="gap:8px">
-                  ${s ? `<span class="tier ${s.tier}">${s.tier}</span>` : `<span class="tier D" style="background:var(--ink3)">?</span>`}
+                <div class="row" style="gap:9px">
+                  ${sc ? `<span class="tier ${sc.tier}">${sc.tier}</span>` : `<span class="tier D">?</span>`}
                   <div><b>${esc(m.name)}</b>
-                    <div class="tiny dim">raised by ${esc(m.mentionedBy || "the team")}
-                      ${m.evidence === "customer" ? `· <b style="color:var(--accent)">customer signal</b>` : "· internal"}</div></div>
+                    <div class="tiny dim">${esc(m.mentionedBy || "the team")} in ${esc(m.from.channel || m.from.source)}
+                      ${m.evidence === "customer" ? `· <b style="color:var(--accent)">a customer raised this</b>` : ""}</div></div>
                 </div>
                 <div class="row">
-                  ${m.sentiment === "concern" ? `<span class="pill" style="background:#fdf0ee;color:var(--bad)">we're missing this</span>` : ""}
-                  ${match ? (S.attending.has(match.id) ? `<span class="tiny" style="color:var(--accent)">✓ booked</span>`
-                      : `<button class="btn ghost sm" onclick="toggleGoing('${match.id}')">Add to plan</button>`)
-                    : `<span class="pill">not in our database</span>`}
+                  ${m.sentiment === "concern" ? `<span class="pill bad">we are missing this</span>` : ""}
+                  ${match ? (S.attending.has(match.id) ? `<span class="pill blue">going</span>`
+                      : `<button class="btn ghost sm" onclick="setStatus('${match.id}','Considering')">Consider it</button>`)
+                    : `<span class="pill outline">not in the list</span>`}
                 </div>
               </div>
               <div class="tiny muted" style="margin-top:5px">"${esc(m.context)}"</div>
             </div>`; }).join("")}
-          ${concerns.length ? `<div class="alert bad" style="margin-top:13px"><b>The headline.</b>
-            ${concerns.length} event${concerns.length > 1 ? "s were" : " was"} raised as something we missed or
-            didn't know about, ${custRaised.length ? `${custRaised.length} of them by customers or prospects rather than by us.` : ""}
-            That's the gap between what the team already knows and what the plan reflects.</div>` : ""}
-        </div>` : `<div class="empty">Load a sample and press <b>Find the conferences</b>.</div>`}
-      </div>
+        </div>` : ""}
     </div>
 
     <div class="card pad">
-      <h4>Why this is the AI feature</h4>
-      <p class="tiny muted" style="line-height:1.65">A conference name inside a Slack message is misspelled,
-        abbreviated, mixed into unrelated chat, and carries the thing that actually matters -
-        <i>whether a customer raised it</i>, only in the surrounding sentence.
-        No regex survives that. Reading unstructured language and judging what it implies is the one job
-        where a model is unambiguously the right tool.</p>
-      <p class="tiny muted" style="line-height:1.65">Today it reads a paste box. The same function takes its input
-        from a Slack MCP connector and a meeting-notes API without changing, the parsing is the hard part,
-        and it's done.</p>
-      <div class="alert good tiny" style="margin-top:10px">Anything found here shows as a <b>★</b> on the
-        Conferences tab, so the signal lands where the decision is made rather than in a thread.</div>
+      <h4>How this runs</h4>
+      <ol style="font-size:12.5px;line-height:1.75;padding-left:18px;margin:0 0 14px;color:var(--ink2)">
+        <li>Something writes a row into the inbox: a Slack connector, a forwarded call summary, or a person pasting text.</li>
+        <li><span class="mono">grain-signal-miner</span> runs on a schedule and picks up whatever is unread.</li>
+        <li>It pulls out every event mentioned, who raised it, and whether they were a customer or one of us.</li>
+        <li>New events land in the conference list tagged <span class="pill" style="font-size:10px">from Slack</span> or
+            <span class="pill sand" style="font-size:10px">from meeting notes</span>, ready to be scored.</li>
+      </ol>
+      <div class="alert">
+        <b>Why a model and not a search.</b> A conference name inside a Slack message is misspelled, abbreviated
+        and buried in unrelated chat, and the thing that matters most, whether a <i>customer</i> said it, only
+        exists in the surrounding sentence. No pattern match survives that.
+      </div>
+      <div class="alert good" style="margin-top:10px">
+        <b>Why it is worth having.</b> The team already knows which conferences matter. That knowledge is sitting
+        in threads nobody reopens. This is the gap between what they know and what the plan reflects.
+      </div>
     </div>
   </div>`;
 };
-function loadSig(i) {
-  S.sigText = i === "all" ? SAMPLE_SIGNALS.map(s => `--- ${s.source} (${s.date}) ---\n${s.text}`).join("\n\n")
-    : `--- ${SAMPLE_SIGNALS[i].source} (${SAMPLE_SIGNALS[i].date}) ---\n${SAMPLE_SIGNALS[i].text}`;
-  render();
+
+function openPasteSignal() {
+  S.paste = { source: "Slack", channel: "", body: "" };
+  drawer(`<div class="spread"><h3 style="margin:0">Add to the inbox</h3>
+      <button class="x" onclick="S.paste=null;closeDrawer()">×</button></div>
+    <div class="tiny dim" style="margin-top:4px">Normally a connector writes these. This is the manual way in.</div>`,
+  `<div class="kv">
+      <label>Kind</label>
+      <select class="inp" onchange="S.paste.source=this.value">
+        ${["Slack", "Meeting notes", "Email", "Manual paste"].map(o => `<option>${o}</option>`).join("")}
+      </select>
+      <label>Where from</label>
+      <input class="inp" placeholder="#sales-emea, or the call name" oninput="S.paste.channel=this.value">
+      <label>The text</label>
+      <textarea class="inp" style="min-height:190px;font-family:var(--mono);font-size:12px"
+        placeholder="Paste the thread or the summary" oninput="S.paste.body=this.value"></textarea>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="saveSignal()">Add to inbox</button>
+      <button class="btn ghost" onclick="loadSampleSignal()">Use a sample</button>
+    </div>`);
 }
-async function mine() {
-  const t = document.getElementById("sigtext").value.trim();
-  if (!t) return alert("Paste some text, or load one of the samples.");
-  S.sigText = t;
-  const b = document.getElementById("minebtn");
-  b.disabled = true; b.innerHTML = `<span class="spin"></span> Reading…`;
-  const r = await ask(`mine:${t.length}:${t.slice(0, 40)}`,
-    () => AI.mineSignals(t, CONFERENCES.map(c => c.name)), () => DEMO.mineSignals);
-  b.disabled = false; b.textContent = "Find the conferences";
-  if (r.__error) { document.getElementById("mineout").innerHTML = `<div class="alert bad">${esc(r.__error)}</div>`; return; }
-  S.mined = (r.mentions || []).map(m => ({ ...m, source: "internal signal" }));
-  save(); render();
+
+function loadSampleSignal() {
+  const s = SAMPLE_SIGNALS[Math.floor(Math.random() * SAMPLE_SIGNALS.length)];
+  S.paste = { source: s.source.startsWith("Slack") ? "Slack" : "Meeting notes",
+              channel: s.source.replace(/^(Slack|Meeting summary)\s*·\s*/, ""), body: s.text };
+  closeDrawer(); openPasteSignal();
+  setTimeout(() => {
+    const d = document.querySelector(".drawer textarea");
+    if (d) d.value = S.paste.body;
+    const c = document.querySelector(".drawer input");
+    if (c) c.value = S.paste.channel;
+  }, 30);
 }
-async function discoverNew() {
+
+async function saveSignal() {
+  if (!S.paste?.body?.trim()) { toast("Nothing to add.", true); return; }
+  try {
+    await DB.addSignal({ source: S.paste.source, channel: S.paste.channel || null,
+      occurred_at: new Date().toISOString(), body: S.paste.body });
+    S.paste = null; closeDrawer(); await reload();
+    toast("In the inbox. Run the miner to read it.");
+  } catch (e) { toast("Couldn't save: " + e.message, true); }
+}
+
+/* The scheduled flow does this on its own. The button exists so the work is
+   visible rather than having to be taken on trust. */
+async function runMiner() {
+  const waiting = SIGNALS.filter(g => !g.processed_at);
+  if (!waiting.length) return;
   const out = document.getElementById("mineout");
-  out.innerHTML = `<div class="card pad"><h3>Looking for gaps <span class="spin"></span></h3></div>`;
-  const byRegion = {};
-  upcoming().forEach(c => { if (S.attending.has(c.id)) byRegion[c.region] = (byRegion[c.region] || 0) + 1; });
-  const gaps = `Booked by region: ${JSON.stringify(byRegion)}. Verticals we currently under-cover: travel wholesale, marketplaces, LATAM.`;
-  const r = await ask(`disc:${gaps}`, () => AI.discover(CONFERENCES.map(c => c.name), gaps), () => DEMO.discover);
-  if (r.__error) { out.innerHTML = `<div class="alert bad">${esc(r.__error)}</div>`; return; }
-  out.innerHTML = `<div class="card pad">
-    <div class="spread" style="margin-bottom:4px"><h3 style="margin:0">Events we don't track</h3>${badge(r)}</div>
-    <p class="tiny muted" style="margin:0 0 10px">Each one comes with the honest reason it might not be worth it -
-      a suggestion without a risk attached isn't advice.</p>
-    ${(r.suggestions || []).map(s => `<div style="border-top:1px solid var(--line2);padding:11px 0">
-      <div class="spread"><b>${esc(s.name)}</b>
-        <span class="tiny dim">${esc(s.typicalMonth)} · ${esc(s.typicalCity)} · ${esc(s.vertical)}</span></div>
-      <div style="font-size:12.5px;margin-top:4px">${esc(s.whyUs)}</div>
-      <div class="tiny" style="margin-top:4px;color:var(--c)"><b>Risk:</b> ${esc(s.risk)}</div>
-    </div>`).join("")}</div>`;
+  out.innerHTML = `<div class="card pad" style="margin-bottom:16px"><h3 style="margin:0">
+    <span class="spin"></span> Reading ${waiting.length} conversation${waiting.length === 1 ? "" : "s"}…</h3></div>`;
+  let total = 0;
+  for (const g of waiting) {
+    const r = await ask(`mine:${g.id}`, () => AI.mineSignals(g.body, CONFERENCES.map(c => c.name)),
+      () => DEMO.mineSignals);
+    if (r.__error) { out.innerHTML = `<div class="alert bad">${esc(r.__error)}</div>`; return; }
+    const mentions = r.mentions || [];
+    total += mentions.length;
+    try { await DB.markSignalProcessed(g.id, mentions); } catch (e) { /* keep going */ }
+  }
+  out.innerHTML = "";
+  await reload();
+  toast(`Read ${waiting.length} conversation${waiting.length === 1 ? "" : "s"}, found ${total} event mentions.`);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1254,7 +1308,7 @@ const VIEWS = { conferences: VIEWS_CONF, plan: VIEWS_PLAN, field: VIEWS_FIELD,
    ══════════════════════════════════════════════════════════════════════ */
 async function reload() {
   const d = await DB.loadAll();
-  CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads;
+  CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads; SIGNALS = d.signals || [];
   S.attending = new Set(CONFERENCES.filter(c => c.status === "Going").map(c => c.id));
   render();
 }

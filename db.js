@@ -51,10 +51,11 @@ const DB = (() => {
 
   async function loadAll() {
     if (!sb) throw new Error(NO_CLIENT);
-    const [c, l, e] = await Promise.all([
+    const [c, l, e, g] = await Promise.all([
       sb.from("conferences").select("*").order("start_date"),
       sb.from("leads").select("*"),
       sb.from("encounters").select("*").order("met_at"),
+      sb.from("signals").select("*").order("occurred_at", { ascending: false }),
     ]);
     for (const r of [c, l, e]) if (r.error) throw new Error(r.error.message);
     const leadById = Object.fromEntries(l.data.map(x => [x.id, x]));
@@ -62,6 +63,7 @@ const DB = (() => {
       conferences: c.data.map(toConf),
       leads: l.data,
       encounters: e.data.map(r => toEnc(r, leadById)),
+      signals: g.error ? [] : g.data,
     };
   }
 
@@ -111,6 +113,22 @@ const DB = (() => {
     if (error) throw new Error(error.message);
   }
 
+  /* Anything that can write a row can feed the miner: a Slack connector, a
+     forwarded meeting summary, or a person pasting text. */
+  async function addSignal(fields) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const { data, error } = await sb.from("signals").insert(fields).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function markSignalProcessed(id, found) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const { error } = await sb.from("signals")
+      .update({ processed_at: new Date().toISOString(), found }).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   async function addConference(fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { data, error } = await sb.from("conferences").insert(fields).select().single();
@@ -131,9 +149,10 @@ const DB = (() => {
       .on("postgres_changes", { event: "*", schema: "public", table: "encounters" }, cb)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, cb)
       .on("postgres_changes", { event: "*", schema: "public", table: "conferences" }, cb)
+      .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, cb)
       .subscribe();
   }
 
   return { sb, loadAll, findPossibleDuplicates, upsertLead, addEncounter,
-           setConferenceStatus, addConference, updateLead, onChange };
+           setConferenceStatus, addConference, updateLead, addSignal, markSignalProcessed, onChange };
 })();
