@@ -445,91 +445,146 @@ function toast(msg, bad) {
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 2, PLAN THE YEAR.  Coverage, gaps, clusters, clashes, budget.
    ══════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   VIEW 2, PLAN THE YEAR
+
+   A calendar first, because a clash is a picture, not a sentence. Two bars
+   sitting on the same days in different cities is instantly obvious; the
+   same fact written as a paragraph has to be read and believed.
+   ══════════════════════════════════════════════════════════════════════ */
+S.planFilter = "worth";   // worth | booked | all
+
 VIEWS_PLAN = () => {
   const fut = upcoming();
-  const months = coverageByMonth(fut, S.attending);
-  const keys = Object.keys(months).sort();
+  const scoredAll = fut.map(c => ({ c, s: scoreConference(c, S.weights) }))
+                       .sort((a, b) => a.c.start.localeCompare(b.c.start));
+
+  const shown = scoredAll.filter(({ c, s }) =>
+    S.planFilter === "all" ? true
+    : S.planFilter === "booked" ? S.attending.has(c.id)
+    : (S.attending.has(c.id) || s.total >= 65));
+
   const booked = [...S.attending].map(confById).filter(Boolean).filter(c => c.start >= TODAY);
   const spend = booked.reduce((t, c) => t + c.ticketEur + (TRAVEL_FROM_TLV[c.region] || 1500), 0);
-  const clusters = findClusters(fut, {}, S.weights);
   const clashes = findConflicts(fut, S.weights);
+  const clashIds = new Set(clashes.flat().map(x => x.c.id));
+  const clusters = findClusters(fut, {}, S.weights);
+  const clusterIds = new Set(clusters.flatMap(cl => cl.items.map(i => i.id)));
 
-  // A gap is a month with a genuinely good event available and nothing booked.
-  const gaps = keys.filter(k => {
-    const m = months[k];
-    return !m.booked.length && m.all.some(c => scoreConference(c, S.weights).total >= 80);
-  });
-  // Region coverage against where our A-tier opportunities actually are.
+  // Calendar span: first to last event shown, padded to whole months.
+  const all = shown.length ? shown : scoredAll;
+  const t0 = new Date((all[0]?.c.start || TODAY).slice(0, 7) + "-01");
+  const lastEnd = all.reduce((m, x) => x.c.end > m ? x.c.end : m, TODAY);
+  const t1 = new Date(new Date(lastEnd.slice(0, 7) + "-01").setMonth(new Date(lastEnd.slice(0, 7) + "-01").getMonth() + 1));
+  const span = t1 - t0;
+  const pct = d => ((new Date(d) - t0) / span) * 100;
+
+  const months = [];
+  for (let d = new Date(t0); d < t1; d.setMonth(d.getMonth() + 1)) {
+    const next = new Date(new Date(d).setMonth(d.getMonth() + 1));
+    months.push({ key: d.toISOString().slice(0, 7),
+      label: d.toLocaleDateString("en-GB", { month: "short" }),
+      year: d.getFullYear(),
+      left: pct(d.toISOString().slice(0, 10)),
+      width: ((next - d) / span) * 100 });
+  }
+
   const byRegion = {};
   fut.forEach(c => {
-    const s = scoreConference(c, S.weights);
+    const sc = scoreConference(c, S.weights);
     const r = byRegion[c.region] = byRegion[c.region] || { a: 0, booked: 0 };
-    if (s.total >= 80) r.a++;
+    if (sc.total >= 80) r.a++;
     if (S.attending.has(c.id)) r.booked++;
   });
   const under = Object.entries(byRegion).filter(([, v]) => v.a >= 2 && v.booked === 0).map(([k]) => k);
 
   return `
-  <div class="head"><h1>Plan the year</h1>
-    <p>Where the team is covered, where it isn't, and which trips could be one trip.
-       ${booked.length} event${booked.length === 1 ? "" : "s"} booked, ${eur(spend)} committed including travel from Tel Aviv.</p></div>
-
-  ${(gaps.length || under.length || clashes.length) ? `
-  <div class="grid" style="gap:9px;margin-bottom:16px">
-    ${under.length ? `<div class="alert bad"><b>Under-invested ${under.length > 1 ? "regions" : "region"}.</b>
-      ${under.map(r => `<b>${r}</b> has ${byRegion[r].a} A-tier event${byRegion[r].a > 1 ? "s" : ""} coming up`).join(", and ")} -
-      with nothing booked.</div>` : ""}
-    ${gaps.length ? `<div class="alert"><b>${gaps.length} month${gaps.length > 1 ? "s" : ""} with an A-tier event and no coverage:</b>
-      ${gaps.map(monthName).join(", ")}.</div>` : ""}
-    ${clashes.slice(0, 3).map(([a, b]) => `<div class="alert"><b>Clash.</b>
-      ${esc(a.c.name)} (${esc(a.c.city)}, ${a.s.total}) and ${esc(b.c.name)} (${esc(b.c.city)}, ${b.s.total}) overlap
-      on ${fmtDate(a.c.start)}. Two reps, or pick the ${a.s.total >= b.s.total ? esc(a.c.name) : esc(b.c.name)}.</div>`).join("")}
-  </div>` : `<div class="alert good" style="margin-bottom:16px"><b>No gaps or clashes</b> at the current weighting.</div>`}
-
-  <h3>Coverage by month</h3>
-  <div class="months" style="margin-bottom:22px">
-    ${keys.map(k => {
-      const m = months[k], on = m.booked.length, gap = gaps.includes(k);
-      return `<div class="mon ${on ? "on" : gap ? "gap" : ""}">
-        <div class="mh"><span>${monthName(k)}</span><span>${on ? `${on} booked` : gap ? "gap" : ""}</span></div>
-        ${m.all.map(c => { const s = scoreConference(c, S.weights);
-          return `<div class="ev ${S.attending.has(c.id) ? "" : "off"}" onclick="openConf('${c.id}')" title="${esc(c.name)}, ${esc(c.city)}">
-            <b class="tier ${s.tier}" style="width:15px;height:15px;font-size:9px">${s.tier}</b>
-            <span>${esc(c.name.length > 26 ? c.name.slice(0, 25) + "…" : c.name)}</span></div>`; }).join("")}
-      </div>`; }).join("")}
+  <div class="head">
+    <div class="spread">
+      <h1>Plan the year</h1>
+      <div class="row" style="gap:4px">
+        ${[["worth", "Worth attending"], ["booked", "Booked only"], ["all", "Everything"]].map(([v, l]) =>
+          `<button class="chip ${S.planFilter === v ? "on" : ""}" onclick="S.planFilter='${v}';render()">${l}</button>`).join("")}
+      </div>
+    </div>
+    <p>${booked.length} event${booked.length === 1 ? "" : "s"} booked, ${eur(spend)} committed including flights
+       and hotels from Tel Aviv. Bars on the same dates in different cities are a clash: you cannot be in both.</p>
   </div>
 
-  <div class="grid" style="grid-template-columns:1fr 1fr">
-    <div class="card pad">
-      <h3>Trips you could combine</h3>
-      <p class="tiny muted" style="margin:-4px 0 12px">Same region, within 10 days of each other, both worth attending.
-         Saving is one return flight and hotel from Tel Aviv per event folded in.</p>
-      ${clusters.length ? clusters.slice(0, 6).map(cl => `
-        <div style="border-top:1px solid var(--line2);padding:10px 0">
-          <div class="spread"><b style="font-size:13px">${esc(cl.cities.join(" → "))}</b>
-            <span class="pill" style="background:var(--accent-soft);color:var(--accent-ink)">saves ~${eur(cl.savedTravel)}</span></div>
-          <div class="tiny dim" style="margin:2px 0 5px">${fmtDate(cl.start)} – ${fmtDate(cl.end)} · ${cl.span} days · avg score ${cl.avgScore}</div>
-          ${cl.items.map((c, i) => `<div class="tiny" style="padding:1px 0">
-            <span class="tier ${cl.scores[i].tier}" style="width:14px;height:14px;font-size:8.5px;vertical-align:-2px">${cl.scores[i].tier}</span>
-            ${esc(c.name)} <span class="dim">· ${esc(c.city)} · ${fmtDate(c.start)}</span></div>`).join("")}
-        </div>`).join("") : `<div class="empty tiny">No combinable trips at the current weighting.</div>`}
+  <div class="card pad" style="margin-bottom:20px">
+    <div class="cal">
+      <div class="cal-head">
+        <div class="cal-label"></div>
+        <div class="cal-track">
+          ${months.map(m => `<div class="cal-month" style="left:${m.left}%;width:${m.width}%">
+            <span>${m.label}</span>${m.label === "Jan" || m === months[0] ? `<b>${String(m.year).slice(2)}</b>` : ""}
+          </div>`).join("")}
+          <div class="cal-today" style="left:${pct(TODAY)}%" title="today"></div>
+        </div>
+      </div>
+
+      <div class="cal-body">
+        ${shown.map(({ c, s }) => {
+          const l = pct(c.start), w = Math.max(0.7, pct(c.end) - pct(c.start) + 0.35);
+          const going = S.attending.has(c.id);
+          return `<div class="cal-row" onclick="openConf('${c.id}')">
+            <div class="cal-label" title="${esc(c.name)}">
+              <span class="tier ${s.tier}">${s.tier}</span>
+              <span class="cal-name">${esc(c.name)}</span>
+            </div>
+            <div class="cal-track">
+              ${months.map(m => `<div class="cal-grid" style="left:${m.left}%;width:${m.width}%"></div>`).join("")}
+              <div class="cal-bar t${s.tier} ${going ? "on" : ""} ${clashIds.has(c.id) ? "clash" : ""}"
+                   style="left:${l}%;width:${w}%">
+                <span>${esc(c.city)}${clusterIds.has(c.id) ? " · combinable" : ""}</span>
+              </div>
+              <div class="cal-today" style="left:${pct(TODAY)}%"></div>
+            </div>
+          </div>`; }).join("")}
+      </div>
     </div>
 
-    <div class="card pad">
-      <h3>What's booked</h3>
-      ${booked.length ? booked.sort((a, b) => a.start.localeCompare(b.start)).map(c => {
-        const s = scoreConference(c, S.weights);
-        return `<div class="spread" style="border-top:1px solid var(--line2);padding:9px 0">
-          <div><div style="font-weight:600;font-size:13px">${esc(c.name)}</div>
-            <div class="tiny dim">${fmtRange(c)} · ${esc(c.city)} · ${eur(c.ticketEur + (TRAVEL_FROM_TLV[c.region] || 1500))} all-in</div></div>
-          <div class="row"><span class="tier ${s.tier}">${s.tier}</span>
-            <button class="btn ghost sm" onclick="toggleGoing('${c.id}')">Drop</button></div>
-        </div>`; }).join("")
-        : `<div class="empty tiny">Nothing booked yet. Tick events on the Conferences tab.</div>`}
-      ${booked.length ? `<div class="spread" style="border-top:2px solid var(--line);padding-top:10px;margin-top:6px">
-        <b>Total committed</b><b class="mono">${eur(spend)}</b></div>
-        <div class="tiny dim" style="margin-top:4px">${booked.length} events ·
-        ${eur(spend / Math.max(1, booked.reduce((t, c) => t + scoreConference(c, S.weights).eff.reachable, 0)))} blended per reachable contact</div>` : ""}
+    <div class="row cal-key">
+      <span><i class="k tA"></i> A, book it</span>
+      <span><i class="k tB"></i> B, one rep</span>
+      <span><i class="k tC"></i> C, only if it fits a trip</span>
+      <span><i class="k tD"></i> D, skip</span>
+      <span><i class="k on"></i> solid means booked</span>
+      <span><i class="k clash"></i> red edge means it clashes</span>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+    <div>
+      <h3>What the calendar is telling you</h3>
+      ${under.length ? `<div class="alert bad" style="margin-bottom:9px">
+        <b>Nothing booked in ${under.join(" or ")}.</b>
+        ${under.map(r => `${byRegion[r].a} A-tier event${byRegion[r].a > 1 ? "s" : ""} in ${r}`).join(", ")},
+        and no one is going to any of them.</div>` : ""}
+
+      ${clashes.length ? clashes.slice(0, 4).map(([a, b]) => `
+        <div class="alert" style="margin-bottom:9px">
+          <b>${fmtDate(a.c.start)}: two places at once.</b>
+          ${esc(a.c.name)} in ${esc(a.c.city)} scores ${a.s.total}.
+          ${esc(b.c.name)} in ${esc(b.c.city)} scores ${b.s.total}.
+          Send two reps, or take the ${a.s.total >= b.s.total ? esc(a.c.name) : esc(b.c.name)}.
+        </div>`).join("") : `<div class="alert good">No clashes among the events worth attending.</div>`}
+    </div>
+
+    <div>
+      <h3>Trips you could combine</h3>
+      <p class="tiny muted" style="margin:-6px 0 10px">Same region, within ten days, both worth going to.
+        The saving is one return flight and hotel from Tel Aviv.</p>
+      ${clusters.length ? clusters.slice(0, 5).map(cl => `
+        <div class="card pad" style="margin-bottom:9px">
+          <div class="spread"><b style="font-size:13px">${esc(cl.cities.join(" then "))}</b>
+            <span class="pill blue">saves about ${eur(cl.savedTravel)}</span></div>
+          <div class="tiny dim" style="margin:3px 0 6px">${fmtDate(cl.start)} to ${fmtDate(cl.end)},
+            ${cl.span} days away</div>
+          ${cl.items.map((c, i) => `<div class="tiny" style="padding:2px 0">
+            <span class="tier ${cl.scores[i].tier}" style="width:15px;height:15px;font-size:9px;vertical-align:-3px">${cl.scores[i].tier}</span>
+            ${esc(c.name)} <span class="dim">${esc(c.city)}, ${fmtDate(c.start)}</span></div>`).join("")}
+        </div>`).join("") : `<div class="empty tiny">No combinable trips right now.</div>`}
     </div>
   </div>`;
 };
@@ -1434,8 +1489,12 @@ function drawAddPerson() {
         <label>Email</label>
         <input class="inp" value="${esc(a.email)}" oninput="S.ap.email=this.value">
       </div>
-      <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()"
-        ${!a.fields.name ? "disabled" : ""}>Next, where did you meet?</button>`;
+      <p class="tiny dim" style="margin:-4px 0 4px">Nothing here is required. A lead with only an email is
+        still a lead, and the enrichment flow can fill in the company later.</p>
+      <div class="row">
+        <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()">Next, where did you meet?</button>
+        <span class="tiny dim">Only the email matters. Fill the rest later, or never.</span>
+      </div>`;
   }
 
   /* ── 4. the encounter itself ─────────────────────────────────────── */
@@ -1496,7 +1555,10 @@ async function savePerson() {
     let leadId = a.leadId;
     if (!leadId) {
       const lead = await DB.upsertLead({
-        full_name: a.fields.name, work_email: a.email || null,
+        // An email with no name is a perfectly good lead. Use the local part as
+        // a placeholder so the row is readable until someone fills it in.
+        full_name: a.fields.name || (a.email ? a.email.split("@")[0] : "Unnamed"),
+        work_email: a.email || null,
         company: a.fields.company || null, title: a.fields.title || null,
         phone: a.fields.phone || null, icp_segment: a.fields.segment,
       });

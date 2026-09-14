@@ -249,3 +249,68 @@ th:first-child,td:first-child{min-width:220px}
    instead of scrolling inside its own container. */
 .grid > *{min-width:0}
 .main{min-width:0;overflow-x:hidden}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Year calendar
+
+   Events as bars on a shared timeline. Two bars covering the same days in
+   different cities is a clash you can see, which beats reading it as a
+   sentence and having to take it on trust.
+   ══════════════════════════════════════════════════════════════════════════ */
+.cal{font-size:12px}
+.cal-head{display:flex;align-items:flex-end;height:24px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.cal-head .cal-track{height:100%}
+.cal-label{width:250px;flex:none;padding-right:14px;display:flex;align-items:center;gap:8px;overflow:hidden}
+.cal-head .cal-label{border:0}
+.cal-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;font-size:12.5px}
+/* The track must fill the row's height, otherwise it collapses to zero and
+   the absolutely positioned bars drift off their labels. */
+.cal-track{position:relative;flex:1;min-width:0;height:100%;align-self:stretch}
+
+.cal-month{position:absolute;bottom:0;border-left:1px solid var(--line);padding-left:6px;
+  font-size:10.5px;color:#9AA3C4;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  display:flex;align-items:baseline;gap:4px;height:18px}
+.cal-month b{color:#C3CADF;font-weight:600}
+
+.cal-body{max-height:440px;overflow-y:auto;overflow-x:hidden}
+.cal-row{display:flex;align-items:stretch;height:30px;cursor:pointer;
+  border-bottom:1px solid var(--line-soft,#F2F5FB)}
+.cal-row:hover{background:#F6F8FD}
+.cal-grid{position:absolute;top:0;bottom:0;border-left:1px solid var(--line-soft,#F0F3FA)}
+.cal-today{position:absolute;top:0;bottom:0;width:1px;background:#F0A2A2;z-index:3}
+
+/* A three-day event inside a ten-month window is under one percent wide, so
+   it needs a floor to stay visible and clickable. */
+.cal-bar{position:absolute;top:6px;height:18px;min-width:26px;border-radius:4px;z-index:2;
+  display:flex;align-items:center;padding:0 7px;overflow:hidden;
+  transition:filter .12s, transform .12s}
+/* City name appears on hover: at this density it would be unreadable always-on. */
+.cal-bar span{font-size:10.5px;font-weight:600;white-space:nowrap;opacity:0;transition:opacity .1s}
+.cal-bar:hover{filter:brightness(.94);z-index:4;min-width:0;padding:0 8px}
+.cal-bar:hover span{opacity:1}
+
+
+/* Tier sets the colour; booked events are solid, the rest are washes. */
+.cal-bar.tA{background:#D3DEF6;color:#22306B}
+.cal-bar.tB{background:#DCE7FB;color:#1B5FD9}
+.cal-bar.tC{background:#E8EBF3;color:#5C6590}
+.cal-bar.tD{background:#F1F3F9;color:#9AA3C4}
+.cal-bar.on.tA{background:#2B3674;color:#fff}
+.cal-bar.on.tB{background:#3D82F7;color:#fff}
+.cal-bar.on.tC{background:#8D92B1;color:#fff}
+.cal-bar.on.tD{background:#C9D0E3;color:#2B3674}
+.cal-bar.clash{box-shadow:inset 0 0 0 1.5px #D0342C}
+
+.cal-key{gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+  font-size:11px;color:#9AA3C4}
+.cal-key span{display:inline-flex;align-items:center;gap:5px}
+.cal-key .k{width:14px;height:9px;border-radius:3px;display:inline-block}
+.cal-key .k.tA{background:#D3DEF6}.cal-key .k.tB{background:#DCE7FB}
+.cal-key .k.tC{background:#E8EBF3}.cal-key .k.tD{background:#F1F3F9}
+.cal-key .k.on{background:#2B3674}
+.cal-key .k.clash{background:#fff;box-shadow:inset 0 0 0 1.5px #D0342C}
+
+@media(max-width:900px){
+  .cal-label{width:140px;padding-right:8px}
+  .cal-name{font-size:11.5px}
+}
