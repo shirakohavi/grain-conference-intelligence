@@ -203,7 +203,7 @@ VIEWS_CONF = () => {
             <td>
               <div class="cell-name">${esc(c.name)}</div>
               <div class="row" style="gap:5px;margin-top:3px">
-                <span class="pill src-${c.source.replace(/\s/g, "")}" title="How this event got into the list">${esc(c.source === "Manual" ? "added by hand" : c.source === "AI search" ? "found by AI" : c.source === "Slack" ? "from Slack" : "from LinkedIn")}</span>
+                <span class="pill src-${c.source.replace(/\s/g, "")}" title="How this event got into the list">${esc(SOURCE_LABEL[c.source] || c.source)}</span>
                 ${sig ? `<span class="pill blue">${sig.evidence === "customer" ? "customer signal" : "team signal"}</span>` : ""}
                 ${!c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
                 ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
@@ -218,9 +218,8 @@ VIEWS_CONF = () => {
                 ${ACTIVATIONS.map(a => `<option${c.activation === a ? " selected" : ""}>${a}</option>`).join("")}
               </select></td>
             <td onclick="event.stopPropagation()">
-              <select class="status st-${c.status}" onchange="setStatus('${c.id}', this.value)">
-                ${["New", "Considering", "Attending", "Rejected"].map(o =>
-                  `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
+              <select class="status st-${c.status.replace(/\s/g, "")}" onchange="setStatus('${c.id}', this.value)">
+                ${STATUSES.map(o => `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
               </select></td>
             <td><div class="row" style="gap:7px;flex-wrap:nowrap">
               <span class="tier ${s.tier}">${s.tier}</span><span class="score">${s.total}</span></div></td>
@@ -411,7 +410,7 @@ async function setActivation(id, activation) {
 async function setStatus(id, status) {
   const c = confById(id); if (!c) return;
   c.status = status;
-  status === "Attending" ? S.attending.add(id) : S.attending.delete(id);
+  status === "Going" ? S.attending.add(id) : S.attending.delete(id);
   render();
   try { await DB.setConferenceStatus(id, status); }
   catch (e) { toast("Couldn't save that status: " + e.message, true); }
@@ -419,7 +418,7 @@ async function setStatus(id, status) {
 
 async function toggleGoing(id) {
   const going = S.attending.has(id);
-  const status = going ? "New" : "Attending";
+  const status = going ? "New" : "Going";
   going ? S.attending.delete(id) : S.attending.add(id);
   const c = confById(id); if (c) c.status = status;
   render(); if (S.sel === id) openConf(id);
@@ -1215,7 +1214,7 @@ const VIEWS = { conferences: VIEWS_CONF, plan: VIEWS_PLAN, field: VIEWS_FIELD,
 async function reload() {
   const d = await DB.loadAll();
   CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads;
-  S.attending = new Set(CONFERENCES.filter(c => c.status === "Attending").map(c => c.id));
+  S.attending = new Set(CONFERENCES.filter(c => c.status === "Going").map(c => c.id));
   render();
 }
 
@@ -1274,7 +1273,15 @@ const ACTIVATIONS = [
   "Workshop",
   "Sponsor",
 ];
-const SOURCES = ["Manual", "AI search", "Slack", "LinkedIn"];
+/* Where an event came from. Kept visible on every row because provenance
+   changes how much you trust it: a conference two customers raised in Slack
+   is a different proposition from one a model suggested. */
+const SOURCES = ["Manual", "Slack", "Meeting notes", "AI search", "LinkedIn"];
+const SOURCE_LABEL = {
+  "Manual": "added by hand", "Slack": "from Slack", "Meeting notes": "from meeting notes",
+  "AI search": "found by AI", "LinkedIn": "from LinkedIn",
+};
+const STATUSES = ["New", "Going", "Considering", "Not going"];
 S.newConf = null;
 
 function openAddConference() {
@@ -1327,7 +1334,11 @@ function drawAddConf() {
       </select>
       <label>Source</label>
       <select class="inp" onchange="S.newConf.source=this.value;drawAddConf()">
-        ${SOURCES.map(o => `<option${d.source === o ? " selected" : ""}>${o}</option>`).join("")}
+        ${SOURCES.map(o => `<option${d.source === o ? " selected" : ""} value="${o}">${SOURCE_LABEL[o]}</option>`).join("")}
+      </select>
+      <label>Are we going?</label>
+      <select class="inp" onchange="S.newConf.status=this.value;drawAddConf()">
+        ${STATUSES.map(o => `<option${d.status === o ? " selected" : ""}>${o}</option>`).join("")}
       </select>
       <label>Dates</label>
       <select class="inp" onchange="S.newConf.datesConfirmed=this.value==='yes';drawAddConf()">

@@ -201,10 +201,13 @@ tbody tr.picked{background:var(--accent-soft)}
   background-repeat:no-repeat;background-position:right 8px center}
 .status:hover{filter:brightness(.97)}
 .status:focus{outline:2px solid var(--accent);outline-offset:1px}
-.st-New{background-color:#F1F3F9;color:#5C6590}
+/* Status colours carry meaning: grey is untriaged, amber is undecided,
+   blue is committed, red is a deliberate no. Three of the four are decisions;
+   only grey means nobody has looked. */
+.st-New{background-color:#F1F3F9;color:#7A84A6}
 .st-Considering{background-color:#FCF3E4;color:#8A6516}
-.st-Attending{background-color:#E9F0FE;color:#1B5FD9}
-.st-Rejected{background-color:#FCEEEC;color:#B03A2E}
+.st-Going{background-color:#E3EDFD;color:#12509C}
+.st-Notgoing{background-color:#FCEEEC;color:#B03A2E}
 
 /* Tags: three colours only, so colour means vertical fit rather than decoration.
    Blue = payments/fintech, sand = travel, grey = everything else. */
@@ -229,10 +232,13 @@ th:first-child,td:first-child{min-width:250px}
 
 /* Provenance tag: where an event came from. Colour separates the three
    automated routes from something a person typed in. */
-.pill.src-Manual{background:#F1F3F9;color:#8A93B2}
-.pill.src-AIsearch{background:#EFE9FB;color:#5B3FA8}
-.pill.src-Slack{background:#E6F6EF;color:#1D7A52}
-.pill.src-LinkedIn{background:#E9F0FE;color:#1B5FD9}
+/* Provenance. The three automated routes each get their own colour so you can
+   see at a glance how much of the list a human actually chose. */
+.pill.src-Manual{background:#F1F3F9;color:#7A84A6}
+.pill.src-Slack{background:#E4F4EC;color:#1D7A52}
+.pill.src-Meetingnotes{background:#FBEFE4;color:#96551A}
+.pill.src-AIsearch{background:#EDE8FA;color:#5B3FA8}
+.pill.src-LinkedIn{background:#E3EDFD;color:#12509C}
 
 /* Activation: filled when a decision has been made, outlined when it has not. */
 .status.act-on{background-color:#EFE9FB;color:#5B3FA8}
