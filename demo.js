@@ -96,12 +96,35 @@ const DEMO = {
       avoid:"Do not wait for the next Gulf conference to re-open this. He has already given you the timing." },
   },
 
-  capture: {
-    name:"Nadia Haddad", company:"Wafeq", title:"Head of Payments", email:"", phone:"",
-    intent:"warm",
-    note:"Runs payments for a Gulf B2B invoicing platform. Their SME customers invoice in USD and EUR but settle in AED and SAR, and the spread is a running complaint. Asked how we price the hedge.",
-    icpSignals:["B2B platform with multi-currency invoicing","Gulf SME customer base","customers absorbing FX spread today","asked about pricing unprompted"],
-    missing:["email address","whether she owns the budget or influences it","volume per month"],
+  /* Demo mode has no model, so the three example notes have to produce three
+     different parses or the duplicate check looks like it never fires. The
+     third one is deliberately a person already in the database: that is the
+     case worth seeing, and a canned answer that always returns a stranger
+     would hide it. Routing is by keyword, which is obvious and honest, and
+     the badge on the panel says "demo" either way. */
+  capture(raw = "") {
+    const t = String(raw).toLowerCase();
+    if (t.includes("mercer") || t.includes("nuvei")) return {
+      name:"Daniel Mercer", company:"Nuvei", title:"VP Payments", email:"", phone:"",
+      intent:"hot",
+      note:"Third meeting. Asked about THB and MXN specifically, which is new, he was EUR and GBP only before. Said the Q1 budget opens in November.",
+      icpSignals:["named two new corridors unprompted","gave a budget window","acquirer with cross-border merchants"],
+      missing:["his email, still not captured","who signs off the Q1 budget"],
+    };
+    if (t.includes("mirakl") || t.includes("sophie")) return {
+      name:"Sophie", company:"Mirakl", title:"", email:"", phone:"",
+      intent:"warm",
+      note:"Marketplace payments. Around 300 marketplace clients. Wanted to understand the revenue share model.",
+      icpSignals:["marketplace with cross-border sellers","asked about commercial model"],
+      missing:["surname","email address","which corridors their sellers use"],
+    };
+    return {
+      name:"Nadia Haddad", company:"Wafeq", title:"Head of Payments", email:"", phone:"",
+      intent:"warm",
+      note:"Runs payments for a Gulf B2B invoicing platform. Their SME customers invoice in USD and EUR but settle in AED and SAR, and the spread is a running complaint. Asked how we price the hedge.",
+      icpSignals:["B2B platform with multi-currency invoicing","Gulf SME customer base","customers absorbing FX spread today","asked about pricing unprompted"],
+      missing:["email address","whether she owns the budget or influences it","volume per month"],
+    };
   },
 
   interpret(c, s) {

@@ -1,7 +1,7 @@
 /* Palette sampled from grainfinance.com's live stylesheet.
    Navy #2B3674 is their primary, #3D82F7 their accent blue, #A3AED0 the
    pale blue-grey they use for borders and secondary text.
-   Their typeface is Suisse Intl, which is commercial — Inter is the closest
+   Their typeface is Suisse Intl, which is commercial, and Inter is the closest
    free substitute and is what this uses. */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -187,7 +187,7 @@ tbody tr.picked{background:var(--accent-soft)}
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Merge layer — the database-view pieces, in the redesign's visual language.
+   Merge layer, the database-view pieces, in the redesign's visual language.
 
    Status stays a real <select> rather than a styled div: changing it writes
    to Postgres, so it has to be an actual form control. It borrows the
@@ -221,7 +221,7 @@ tbody tr.picked{background:var(--accent-soft)}
 .pill.bad{background:#FCEEEC;color:#B03A2E}
 .pill.outline{background:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
 
-/* The event name is the row's anchor — give it room so it stops wrapping to
+/* The event name is the row's anchor, so give it room so it stops wrapping to
    three lines, and let it read as the primary text. */
 .cell-name{font-weight:600;letter-spacing:-.012em;line-height:1.35;color:var(--ink)}
 th:first-child,td:first-child{min-width:250px}

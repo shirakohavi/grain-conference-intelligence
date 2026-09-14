@@ -93,6 +93,45 @@ const DB = (() => {
     return out.sort((a, b) => b.confidence - a.confidence).slice(0, 4);
   }
 
+  /* Candidate retrieval for the identity check. This deliberately returns
+     RAW ROWS and scores nothing. Narrowing the search is a database job;
+     deciding whether two rows are the same person is engine.js's job, and
+     keeping those two apart is what stops the confidence number from being
+     invented in two different places. Cast wide, score once. */
+  async function searchCandidates({ email, name, company }) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const byId = {};
+    const take = rows => (rows || []).forEach(r => { byId[r.id] = r; });
+
+    if (email && email.includes("@")) {
+      const [local, domain] = email.trim().toLowerCase().split("@");
+      // Exact address, then everyone else at the same domain. The second one
+      // is what catches "same person, new email format" and "same company,
+      // different person", which are the two cases worth looking at.
+      const { data: exact } = await sb.from("leads").select("*").ilike("work_email", email.trim());
+      take(exact);
+      const { data: sameDomain } = await sb.from("leads").select("*").ilike("work_email", "%@" + domain).limit(25);
+      take(sameDomain);
+      if (local && local.length > 2) {
+        const { data: sameLocal } = await sb.from("leads").select("*").ilike("work_email", local + "@%").limit(10);
+        take(sameLocal);
+      }
+    }
+    if (name) {
+      // Surname, because first names get shortened and surnames rarely do.
+      const last = name.trim().split(/\s+/).slice(-1)[0];
+      if (last && last.length > 2) {
+        const { data } = await sb.from("leads").select("*").ilike("full_name", "%" + last + "%").limit(25);
+        take(data);
+      }
+    }
+    if (company && company.trim().length > 2) {
+      const { data } = await sb.from("leads").select("*").ilike("company", "%" + company.trim() + "%").limit(25);
+      take(data);
+    }
+    return Object.values(byId);
+  }
+
   async function upsertLead(fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { data, error } = await sb.from("leads").insert(fields).select().single();
@@ -153,6 +192,6 @@ const DB = (() => {
       .subscribe();
   }
 
-  return { sb, loadAll, findPossibleDuplicates, upsertLead, addEncounter,
+  return { sb, loadAll, findPossibleDuplicates, searchCandidates, upsertLead, addEncounter,
            setConferenceStatus, addConference, updateLead, addSignal, markSignalProcessed, onChange };
 })();

@@ -24,7 +24,8 @@ const S = {
   weights: LS.get("weights", { ...DEFAULT_WEIGHTS }),
   mined: LS.get("mined", []),                    // conference mentions found in internal text
   aiCache: LS.get("aiCache", {}),
-  pushed: new Set(LS.get("pushed", [])),         // contacts sent to HubSpot
+  pushed: new Set(LS.get("pushed", [])),         // contacts actually sent to HubSpot
+  queued: new Set(LS.get("queued", [])),         // hot/warm, waiting on a relay URL
   sel: null, busy: {},
 };
 // Only genuinely local preferences are persisted in the browser. Anything
@@ -32,6 +33,9 @@ const S = {
 const save = () => {
   LS.set("matchDecisions", S.decisions); LS.set("weights", S.weights);
   LS.set("mined", S.mined); LS.set("aiCache", S.aiCache);
+  // This was being read at startup and never written, so every push was
+  // forgotten on reload. A sync state you cannot trust is worse than none.
+  LS.set("pushed", [...S.pushed]); LS.set("queued", [...S.queued]);
 };
 
 /* ── derived ─────────────────────────────────────────────────────────── */
@@ -631,6 +635,149 @@ VIEWS_PLAN = () => {
 S.fieldConf = LS.get("fieldConf", null);
 S.draft = null;
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   HAVE WE MET THEM ALREADY?
+
+   This runs before a lead is written, in field mode and on the stand
+   tablet. It is worth being clear about what does the deciding, because
+   "the AI checks for duplicates" is the kind of sentence that sounds
+   impressive and means nothing.
+
+   Retrieval is a database query (db.js: searchCandidates). Scoring is
+   matchConfidence() in engine.js, the same arithmetic the Contacts page
+   uses, so a person cannot be 92% a match in one screen and 60% in
+   another. Nothing here calls a model.
+
+   A model is only asked in the grey band, 50 to 84, where the rule has
+   already said it cannot settle it. That is a judgement call about two
+   humans, which is exactly the job worth spending a model on.
+   ══════════════════════════════════════════════════════════════════════ */
+const MATCH_SURE = 85;   // the rule is confident, log it against them
+const MATCH_GREY = 50;   // engine.js's review floor, where it stops calling it
+/* Field mode shows more than the engine would auto-merge, deliberately.
+   Putting a card in front of a rep who can look at the person costs
+   nothing; merging two records without asking costs a CRM. The clearest
+   case for the gap is a job change with no email: "Daniel Mercer, Adyen"
+   against "Daniel Mercer, Nuvei" scores 46, correctly too low to merge on
+   its own, and exactly the thing a rep standing there can settle in one
+   question. So the panel shows from 40 and merges from 85. */
+const MATCH_SHOW = 40;
+
+async function findKnown(rec) {
+  const me = { name: rec.name || "", company: rec.company || "",
+               title: rec.title || "", email: rec.email || "" };
+  if (!me.name && !me.email) return { checked: 0, hits: [], offline: false };
+
+  let rows = null, offline = false;
+  try { rows = await DB.searchCandidates(me); }
+  catch (e) { offline = true; }            // stand wifi. Fall back to memory.
+
+  // The database narrows; whatever is already loaded is added for free, so
+  // the check still answers when the network does not.
+  const pool = {};
+  (rows || []).forEach(r => pool[r.id] = r);
+  LEADS.forEach(l => { if (!pool[l.id]) pool[l.id] = l; });
+  const all = Object.values(pool);
+
+  const hits = all.map(l => {
+    const { score, reasons } = matchConfidence(me, {
+      name: l.full_name || "", company: l.company || "",
+      title: l.title || "", email: l.work_email || "",
+    });
+    return { lead: l, score, reasons,
+             history: allEncounters().filter(e => e.leadId === l.id)
+                        .sort((a, b) => a.at.localeCompare(b.at)) };
+  }).filter(h => h.score >= MATCH_SHOW)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  return { checked: all.length, hits, offline };
+}
+
+/* The panel. It shows the arithmetic, not a verdict, because a rep who
+   can see WHY it matched can overrule it in a second. */
+function knownHTML(k, rec) {
+  if (!k) return "";
+  const src = k.offline
+    ? `<span class="tiny dim">checked ${k.checked} on this device, no network</span>`
+    : `<span class="tiny dim">checked ${k.checked} people, by email, surname and company</span>`;
+
+  if (!k.hits.length) return `
+    <div class="alert good" style="margin-bottom:10px">
+      <div class="spread"><b>New to us.</b> ${src}</div>
+      <div class="tiny" style="margin-top:3px">Nothing on file matches this email, name or company.</div>
+    </div>`;
+
+  return `<div style="margin-bottom:10px">
+    <div class="spread" style="margin-bottom:6px">
+      <h4 style="margin:0">We may have met them</h4>${src}</div>
+    ${k.hits.map((h, i) => {
+      const sure = h.score >= MATCH_SURE;
+      const last = h.history[h.history.length - 1];
+      return `<div class="card pad" style="margin-bottom:8px">
+        <div class="spread">
+          <div><b>${esc(h.lead.full_name || "unnamed")}</b>
+            <div class="tiny dim">${esc(h.lead.title || "")}${h.lead.title && h.lead.company ? " · " : ""}${esc(h.lead.company || "")}</div>
+            <div class="tiny dim">${esc(h.lead.work_email || "no email on file")}</div></div>
+          <span class="pill ${sure ? "blue" : "warn"}">${h.score}/100</span>
+        </div>
+        <div class="tiny muted" style="margin-top:6px">${h.reasons.map(esc).join(" · ")}</div>
+        ${h.history.length ? `<div class="tiny" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft)">
+            Met ${h.history.length} time${h.history.length > 1 ? "s" : ""}, last at <b>${esc(last.confName)}</b>,
+            ${last.at.slice(0, 10)}, signal <span class="sig ${last.intent}">${last.intent}</span>
+            <div class="muted" style="margin-top:2px">"${esc((last.note || "").slice(0, 120))}"</div>
+          </div>` : `<div class="tiny dim" style="margin-top:6px">On file, but no encounter logged yet.</div>`}
+        ${sure
+          ? `<div class="tiny" style="margin-top:6px;color:var(--ok-ink)">Above ${MATCH_SURE}, the rule calls this the same person.</div>`
+          : `<div class="tiny" style="margin-top:6px">Below ${MATCH_SURE} the rule will not call it${h.score < MATCH_GREY ? ", and below " + MATCH_GREY + " it would not merge them on its own" : ""}.
+               <button class="btn sm ghost" style="margin-left:6px" onclick="adjudicateDraft(${i})">Ask the model</button>
+               <span id="adj_${i}"></span></div>`}
+        <div class="row" style="margin-top:8px">
+          <button class="btn sm" onclick="commitDraft('${h.lead.id}')">Same person, log against them</button>
+        </div>
+      </div>`; }).join("")}
+    <div class="tiny dim">Or confirm below and it saves as somebody new.</div>
+  </div>`;
+}
+
+/* The grey band, and only the grey band. */
+async function adjudicateDraft(i) {
+  const d = S.draft; if (!d || !d.known) return;
+  const h = d.known.hits[i];
+  const slot = document.getElementById("adj_" + i);
+  slot.innerHTML = ` <span class="spin"></span> reading both records…`;
+  const last = h.history[h.history.length - 1];
+  const A = { name: d.rec.name, title: d.rec.title, company: d.rec.company, email: d.rec.email,
+              note: d.raw, confName: d.conf.name, at: new Date().toISOString(), rep: REP_NAME() };
+  const B = last
+    ? { name: last.name, title: last.title, company: last.company, email: last.email,
+        note: last.note, confName: last.confName, at: last.at, rep: last.rep }
+    : { name: h.lead.full_name, title: h.lead.title, company: h.lead.company, email: h.lead.work_email,
+        note: "no encounter logged", confName: "on file only", at: new Date().toISOString(), rep: "-" };
+  const r = await ask(`adjf:${h.lead.id}`, () => AI.adjudicateMatch(A, B, h.score, h.reasons),
+    () => ({ verdict: "unsure", confidence: 55, reasoning: "Demo mode, no model configured.", tell: "-" }));
+  if (r.__error) { slot.innerHTML = ` <span class="tiny bad">model unavailable, your call</span>`; return; }
+  const tone = r.verdict === "same" ? "blue" : r.verdict === "different" ? "warn" : "";
+  slot.innerHTML = ` <span class="pill ${tone}">${esc(r.verdict)} · ${r.confidence}%</span>
+    <div class="tiny muted" style="margin-top:3px">${esc(r.reasoning)}${r.tell && r.tell !== "-" ? ` <b>Tell:</b> ${esc(r.tell)}` : ""}</div>
+    <div class="tiny dim">Advisory. It does not merge anything, you do.</div>`;
+}
+
+/* Re-run the check when the rep corrects a field in the draft. The email
+   they type by hand is usually better than the one parsed out of a
+   sentence, and it is the field that decides the match. */
+async function recheckDraft() {
+  const d = S.draft; if (!d) return;
+  const g = id => (document.getElementById(id) || {}).value || "";
+  d.rec = { ...d.rec, name: g("f_name"), company: g("f_company"), title: g("f_title"), email: g("f_email") };
+  const slot = document.getElementById("knownbox");
+  if (slot) slot.innerHTML = `<div class="tiny dim"><span class="spin"></span> checking who we already know…</div>`;
+  d.known = await findKnown(d.rec);
+  const s2 = document.getElementById("knownbox");
+  if (s2) s2.innerHTML = knownHTML(d.known, d.rec);
+}
+
 VIEWS_FIELD = () => {
   const opts = upcoming().concat(CONFERENCES.filter(c => c.start < TODAY && c.end >= "2026-09-01"));
   const conf = confById(S.fieldConf) || opts[0];
@@ -693,42 +840,71 @@ async function doCapture() {
   const conf = confById(S.fieldConf) || upcoming()[0];
   const btn = document.getElementById("capbtn");
   btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Structuring…`;
-  const r = await ask(`cap:${raw.slice(0, 60)}`, () => AI.parseCapture(raw, conf.name, conf.id), () => DEMO.capture);
+  const r = await ask(`cap:${raw.slice(0, 60)}`, () => AI.parseCapture(raw, conf.name, conf.id), () => DEMO.capture(raw));
   btn.disabled = false; btn.textContent = "Save lead";
-  if (r.__error) { document.getElementById("draft").innerHTML =
-    `<div class="alert bad"><b>AI unavailable.</b> ${esc(r.__error)} The raw note is saved, nothing is lost.</div>`;
-    return commit({ name: "(unparsed)", company: "", title: "", email: "", intent: "warm", note: raw }, conf, raw); }
-  S.draft = { r, conf, raw };
+
+  // The model failing must not mean the lead is lost OR that the duplicate
+  // check is skipped. Fall through to the same draft with empty fields: the
+  // rep types the email, and the check, which never needed a model, runs.
+  const failed = !!r.__error;
+  const rec = failed
+    ? { name: "", company: "", title: "", email: "", phone: "", intent: "warm", note: raw, icpSignals: [], missing: [] }
+    : { name: r.name || "", company: r.company || "", title: r.title || "", email: r.email || "",
+        phone: r.phone || "", intent: r.intent || "warm", note: r.note || raw,
+        icpSignals: r.icpSignals || [], missing: r.missing || [] };
+
+  S.draft = { r, rec, conf, raw, known: null, failed };
+  drawDraft();
+  S.draft.known = await findKnown(rec);      // deterministic, engine.js
+  const box = document.getElementById("knownbox");
+  if (box) box.innerHTML = knownHTML(S.draft.known, rec);
+}
+
+function drawDraft() {
+  const d = S.draft; if (!d) return;
+  const { r, rec, failed } = d;
   document.getElementById("draft").innerHTML = `
     <div class="ai">
-      <h4>Check before it saves ${badge(r)}</h4>
+      ${failed
+        ? `<div class="alert bad"><b>AI unavailable.</b> ${esc(r.__error)}
+             Nothing is lost, the raw note is below. Type the email and the
+             duplicate check still runs, it never needed a model.</div>`
+        : ""}
+      <h4>Check before it saves ${failed ? "" : badge(r)}</h4>
+
+      <div id="knownbox" style="margin-bottom:10px">
+        <div class="tiny dim"><span class="spin"></span> checking who we already know…</div>
+      </div>
+
       <div class="kv" style="margin-bottom:10px">
-        ${[["name", "Name"], ["company", "Company"], ["title", "Title"], ["email", "Email"], ["phone", "Phone"]].map(([k, l]) =>
-          `<label>${l}</label><input class="inp" id="f_${k}" value="${esc(r[k] || "")}" placeholder="-">`).join("")}
+        ${[["email", "Work email"], ["name", "Name"], ["company", "Company"], ["title", "Title"], ["phone", "Phone"]].map(([k, l]) =>
+          `<label>${l}</label><input class="inp" id="f_${k}" value="${esc(rec[k] || "")}" placeholder="-"
+             ${["email", "name", "company"].includes(k) ? `onchange="recheckDraft()"` : ""}>`).join("")}
         <label>Signal</label>
         <select class="inp" id="f_intent">${["cold", "warm", "hot"].map(i =>
-          `<option${r.intent === i ? " selected" : ""}>${i}</option>`).join("")}</select>
-        <label>Note</label><textarea class="inp" id="f_note" style="min-height:64px">${esc(r.note || "")}</textarea>
+          `<option${rec.intent === i ? " selected" : ""}>${i}</option>`).join("")}</select>
+        <label>Note</label><textarea class="inp" id="f_note" style="min-height:64px">${esc(rec.note || "")}</textarea>
       </div>
-      ${(r.icpSignals || []).length ? `<h4 style="margin-bottom:5px">ICP signals it spotted</h4>
-        <div class="chips" style="margin-bottom:10px">${r.icpSignals.map(s => `<span class="pill" style="background:var(--accent-soft);color:var(--accent-ink)">${esc(s)}</span>`).join("")}</div>` : ""}
-      ${(r.duplicates || []).length ? `<div class="alert bad" style="margin-bottom:10px">
-        <b>We may already know them.</b>
-        ${r.duplicates.map(d => `<div style="margin-top:4px">${esc(d.name)} · ${esc(d.company)}
-          <span class="pill ${d.confidence >= 90 ? "blue" : "warn"}">${d.confidence}% · ${esc(d.reason)}</span>
-          <button class="btn sm" style="margin-left:6px" onclick="commitDraft('${d.lead_id}')">Same person, log against them</button>
-        </div>`).join("")}
-        <div class="tiny" style="margin-top:6px">Or confirm below to create a new person.</div></div>` : ""}
-      ${(r.missing || []).length ? `<div class="alert" style="margin-bottom:10px"><b>Grab before they walk off:</b> ${r.missing.map(esc).join(" · ")}</div>` : ""}
-      <button class="btn" onclick="commitDraft()">Confirm &amp; save</button>
+      <p class="tiny dim" style="margin:-4px 0 10px">Email, name and company re-run the check when you leave the field.</p>
+
+      ${(rec.icpSignals || []).length ? `<h4 style="margin-bottom:5px">ICP signals it spotted</h4>
+        <div class="chips" style="margin-bottom:10px">${rec.icpSignals.map(sg => `<span class="pill" style="background:var(--accent-soft);color:var(--accent-ink)">${esc(sg)}</span>`).join("")}</div>` : ""}
+      ${(rec.missing || []).length ? `<div class="alert" style="margin-bottom:10px"><b>Grab before they walk off:</b> ${rec.missing.map(esc).join(" · ")}</div>` : ""}
+      <button class="btn" onclick="commitDraft()">Confirm &amp; save as new</button>
       <button class="btn ghost" onclick="S.draft=null;document.getElementById('draft').innerHTML=''">Discard</button>
     </div>`;
 }
+
 function commitDraft(existingLeadId) {
   const g = id => document.getElementById(id)?.value || "";
+  const d = S.draft;
   commit({ name: g("f_name"), company: g("f_company"), title: g("f_title"), email: g("f_email"),
-    phone: g("f_phone"), intent: g("f_intent"), note: g("f_note") },
-    S.draft.conf, S.draft.raw, existingLeadId || undefined);
+    phone: g("f_phone"), intent: g("f_intent"), note: g("f_note"),
+    // The signals the model spotted belong on the encounter either way, and
+    // there is no input for them, so they come off the draft rather than
+    // being quietly dropped when the rep edits a field.
+    icpSignals: (d && d.rec && d.rec.icpSignals) || [], segment: (d && d.r && d.r.segment) || null },
+    d.conf, d.raw, existingLeadId || undefined);
 }
 async function commit(rec, conf, raw, existingLeadId) {
   try {
@@ -756,6 +932,7 @@ async function commit(rec, conf, raw, existingLeadId) {
     toast(c && c.touches > 1
       ? `Saved. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
       : "Saved.");
+    await autoPush(leadId);        // hot and warm only, see AUTO_PUSH
   } catch (e) { toast("Save failed: " + e.message, true); }
 }
 const REP_NAME = () => localStorage.getItem("rep_name") || "You";
@@ -779,8 +956,11 @@ VIEWS_CONTACTS = () => {
       <button class="btn" onclick="openAddPerson()">Add a person</button>
     </div>
     <p>${enc} encounters across ${new Set(allEncounters().map(e => e.confId)).size} conferences resolved into
-       ${contacts.length} people. ${repeat.length} have been met more than once, those are the only ones where a
-       pattern exists to read.</p></div>
+       ${contacts.length} people. ${repeat.length} ${repeat.length === 1 ? "has" : "have"} been met more than once,
+       those are the only ones where a pattern exists to read.</p>
+    <p class="tiny muted" style="margin-top:6px">Hot and warm go to HubSpot automatically when they are saved.
+      Cold needs a click, on purpose: follow-up sequences run in HubSpot, and somebody who took a leaflet
+      should not be in one.</p></div>
 
   ${review.length ? `
   <div class="card pad" style="margin-bottom:16px;border-color:#e8d5a8;background:#fefcf6">
@@ -827,10 +1007,12 @@ VIEWS_CONTACTS = () => {
         </div>
         ${c.aliases.length > 1 ? `<div class="tiny dim" style="margin-top:6px">logged as ${c.aliases.slice(0, 2).map(esc).join(" / ")}${c.aliases.length > 2 ? "..." : ""}</div>` : ""}
         ${c.changedCompany ? `<div class="tiny" style="color:var(--c);font-weight:600;margin-top:4px">changed employer</div>` : ""}
+        <div style="margin-top:8px" onclick="${pushState(c) === "manual" ? `event.stopPropagation();pushOne('${c.id}')` : "event.stopPropagation()"}">${pushBadge(c)}</div>
       </div>`).join("")}
   </div>
 
   <h3>Met once <span class="tiny dim" style="font-weight:400">- no pattern yet</span></h3>
+
   <div class="card"><div class="pad" style="padding-bottom:4px"><table>
     <thead><tr><th>Name</th><th>Company</th><th>Where</th><th style="width:70px">Signal</th><th style="width:88px">HubSpot</th></tr></thead>
     <tbody>${once.map(c => `<tr onclick="openContact('${c.id}')">
@@ -838,9 +1020,8 @@ VIEWS_CONTACTS = () => {
       <td class="tiny">${esc(c.company)}</td>
       <td class="tiny dim">${esc(c.encounters[0].confName)}</td>
       <td><span class="sig ${c.encounters[0].intent}">${c.encounters[0].intent}</span></td>
-      <td onclick="event.stopPropagation();pushOne('${c.id}')">
-        ${S.pushed.has(c.id) ? `<span class="tiny" style="color:var(--accent)">✓ synced</span>`
-          : `<button class="btn ghost sm">Push</button>`}</td></tr>`).join("")}
+      <td onclick="${pushState(c) === "manual" ? `event.stopPropagation();pushOne('${c.id}')` : "event.stopPropagation()"}">
+        ${pushBadge(c)}</td></tr>`).join("")}
     </tbody></table></div></div>`;
 };
 
@@ -925,10 +1106,18 @@ function drawContact(c, ai) {
     </div>
 
     <div class="card pad">
-      <h4>Push to HubSpot</h4>
+      <h4>HubSpot</h4>
       <p class="tiny muted" style="margin:0 0 9px">Sends the contact plus every encounter as timeline notes, so the
-        arc survives outside this tool. Without a key configured it shows you the exact payload instead of pretending.</p>
-      <button class="btn" onclick="pushOne('${c.id}')">${S.pushed.has(c.id) ? "Re-sync" : "Push to HubSpot"}</button>
+        arc survives outside this tool. Follow-up emails are written and sent in HubSpot, not here, because that is
+        where the sequences and the unsubscribe list already live.</p>
+      <div class="alert${AUTO_PUSH.includes(lastIntent(c)) ? " good" : ""}" style="margin-bottom:9px">
+        Last signal was <b>${esc(lastIntent(c))}</b>.
+        ${AUTO_PUSH.includes(lastIntent(c))
+          ? `Hot and warm are pushed on their own the moment they are saved, no click needed.`
+          : `Cold is not pushed automatically. Someone who took a leaflet should not land in a follow-up sequence.`}
+        ${!hasRelay() ? `<div class="tiny" style="margin-top:4px">No relay URL is set in Settings, so nothing has actually left the browser yet.</div>` : ""}
+      </div>
+      <button class="btn" onclick="pushOne('${c.id}')">${S.pushed.has(c.id) ? "Push again" : "Push to HubSpot now"}</button>
       <pre id="hs_out" class="mono" style="margin:10px 0 0;white-space:pre-wrap;color:var(--ink2)"></pre>
     </div>`);
 }
@@ -937,11 +1126,37 @@ function drawContact(c, ai) {
    A browser cannot call HubSpot's API directly (they don't allow CORS, and
    putting a private-app token in client JS would be wrong anyway). So the
    honest implementation is: build the exact payload, and either POST it to
-   a relay URL the user configures, or show it for copy/paste. */
-async function pushOne(id) {
-  const { contacts } = identities();
-  const c = contacts.find(x => x.id === id); if (!c) return;
-  const payload = {
+   a relay URL the user configures, or show it for copy/paste.
+
+   Shira's rule, and it is the right one: hot and warm go on their own,
+   cold does not. A cold contact is someone who took a leaflet while
+   walking past. Pushing those automatically is how a CRM fills up with
+   three hundred names nobody will ever call, and how the follow-up
+   sequences that run in HubSpot start emailing people who never asked.
+   Cold stays in this tool until a human decides otherwise.            */
+const AUTO_PUSH = ["hot", "warm"];
+const lastIntent = c => c.encounters[c.encounters.length - 1].intent;
+const hasRelay = () => !!localStorage.getItem("hubspot_relay");
+
+/* Four states, and they mean four different things. "queued" exists
+   because saying "pushed" when no relay is configured would be a lie the
+   rep only finds out about when the follow-up never arrives. */
+function pushState(c) {
+  if (S.pushed.has(c.id)) return "pushed";
+  if (S.queued.has(c.id)) return "queued";
+  return AUTO_PUSH.includes(lastIntent(c)) ? "auto" : "manual";
+}
+
+const PUSH_LABEL = {
+  pushed: `<span class="pill blue">pushed</span>`,
+  queued: `<span class="pill warn" title="Hot or warm, so it goes automatically, but no relay URL is set in Settings yet">queued</span>`,
+  auto:   `<span class="tiny dim">goes automatically</span>`,
+  manual: `<button class="btn ghost sm">Push</button>`,
+};
+const pushBadge = c => PUSH_LABEL[pushState(c)];
+
+function buildPayload(c) {
+  return {
     properties: {
       firstname: c.name.split(" ")[0], lastname: c.name.split(" ").slice(1).join(" "),
       email: c.email, company: c.company, jobtitle: c.title,
@@ -950,23 +1165,57 @@ async function pushOne(id) {
       grain_first_met_at: c.encounters[0].confName,
       grain_last_met_at: c.encounters[c.encounters.length - 1].confName,
       grain_priority: c.priority,
-      hs_lead_status: c.encounters[c.encounters.length - 1].intent === "hot" ? "OPEN_DEAL" : "IN_PROGRESS",
+      hs_lead_status: lastIntent(c) === "hot" ? "OPEN_DEAL" : "IN_PROGRESS",
     },
     notes: c.encounters.map(e => ({ timestamp: e.at, body: `[${e.confName}] ${e.note}, logged by ${e.rep}` })),
   };
+}
+
+async function pushOne(id, opts = {}) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.id === id); if (!c) return;
+  const payload = buildPayload(c);
   const relay = localStorage.getItem("hubspot_relay");
-  const out = document.getElementById("hs_out");
+  const out = opts.auto ? null : document.getElementById("hs_out");
+
   if (relay) {
     try {
       const res = await fetch(relay, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      if (out) out.textContent = res.ok ? "✓ Synced to HubSpot." : `Relay returned ${res.status}.`;
-    } catch (e) { if (out) out.textContent = "Couldn't reach the relay URL: " + e.message; }
-  } else if (out) {
-    out.textContent = "No relay URL set (Settings). This is the payload that would be sent:\n\n"
-      + JSON.stringify(payload, null, 2);
+      if (res.ok) { S.pushed.add(id); S.queued.delete(id); }
+      else if (!opts.auto && out) out.textContent = `Relay returned ${res.status}.`;
+      if (out && res.ok) out.textContent = "Synced to HubSpot. Follow-up sequences run there, not here.";
+      if (opts.auto && !opts.quiet) toast(res.ok
+        ? `${c.name} pushed to HubSpot, ${lastIntent(c)}.`
+        : `${c.name} saved, HubSpot relay returned ${res.status}.`, !res.ok);
+    } catch (e) {
+      S.queued.add(id);
+      if (out) out.textContent = "Couldn't reach the relay URL: " + e.message;
+      if (opts.auto && !opts.quiet) toast(`${c.name} saved. HubSpot relay unreachable, queued.`, true);
+    }
+  } else {
+    // No relay. Do not pretend. Hot and warm are recorded as queued so the
+    // state is recoverable the moment a URL is set; a manual push shows the
+    // payload, which is the useful thing to see when nothing is wired up.
+    if (opts.auto) { S.queued.add(id); if (!opts.quiet) toast(`${c.name} saved and queued for HubSpot, no relay URL set yet.`); }
+    else {
+      S.pushed.add(id);
+      if (out) out.textContent = "No relay URL set (Settings). This is the payload that would be sent:\n\n"
+        + JSON.stringify(payload, null, 2);
+    }
   }
-  S.pushed.add(id); save();
-  if (S.view === "contacts" && !out) render();
+  save();
+  if (!out && !opts.quiet) render();
+}
+
+/* Called after a save. The contact id is not the lead id, identity
+   resolution can fold several leads into one person, so look it up. */
+async function autoPush(leadId) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
+  if (!c) return false;
+  if (!AUTO_PUSH.includes(lastIntent(c))) return false;
+  await pushOne(c.id, { auto: true });
+  return true;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1311,6 +1560,27 @@ async function reload() {
   CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads; SIGNALS = d.signals || [];
   S.attending = new Set(CONFERENCES.filter(c => c.status === "Going").map(c => c.id));
   render();
+  sweepAutoPush();
+}
+
+/* Leads do not only arrive through this page. The stand tablet writes
+   straight to the database, and so does the n8n capture flow, so a hot or
+   warm contact can appear without anything here having run. Without this,
+   "goes automatically" would sit next to their name forever while nothing
+   went anywhere, which is the exact lie the queued state exists to stop.
+   It only touches contacts in neither set, so a reload cannot re-send. */
+async function sweepAutoPush() {
+  let touched = false;
+  try {
+    const { contacts } = identities();
+    for (const c of contacts) {
+      if (S.pushed.has(c.id) || S.queued.has(c.id)) continue;
+      if (!AUTO_PUSH.includes(lastIntent(c))) continue;
+      if (hasRelay()) await pushOne(c.id, { auto: true, quiet: true });
+      else { S.queued.add(c.id); touched = true; }
+    }
+  } catch (e) { /* never let a sync sweep take the page down */ }
+  if (touched) { save(); render(); }
 }
 
 function fatal(msg) {
@@ -1688,6 +1958,7 @@ async function savePerson() {
     toast(wasKnown && c
       ? `Logged. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
       : "Saved.");
+    await autoPush(leadId);
     if (wasKnown) { S.view = "contacts"; render(); }
   } catch (e) { toast("Save failed: " + e.message, true); }
 }
