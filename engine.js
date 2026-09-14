@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   ENGINE — all deterministic logic lives here. No AI in this file.
+   ENGINE, all deterministic logic lives here. No AI in this file.
 
    Design principle: anything that must be REPRODUCIBLE and DEFENSIBLE is
    computed here in plain arithmetic. AI is used only where the job actually
@@ -15,7 +15,7 @@ const TRAVEL_FROM_TLV = {
 };
 
 /* A rep can realistically hold ~20 qualified conversations per day on a show
-   floor. Above that, extra attendees stop being reachable — so efficiency is
+   floor. Above that, extra attendees stop being reachable, so efficiency is
    cost per REACHABLE ICP contact, not cost per attendee. This is why a 62,000
    person festival does not automatically beat a 1,800 person one. */
 const MEETINGS_PER_DAY = 20;
@@ -34,7 +34,7 @@ const DEFAULT_WEIGHTS = {
    0-100 with two stated anchors, so the number a rep sees is comparative:
      raw 14 = an event with no relevance to us whatsoever
      raw 80 = the realistic best case for Grain's ICP
-   Nothing about the RANKING changes — this is presentation, not weighting. */
+   Nothing about the RANKING changes, this is presentation, not weighting. */
 const RAW_FLOOR = 14, RAW_CEIL = 80;
 const stretch = raw => clamp((raw - RAW_FLOOR) / (RAW_CEIL - RAW_FLOOR) * 100);
 
@@ -96,7 +96,7 @@ const REGION_HUBS = { // crude but sufficient: same hub = one flight can cover b
 };
 
 function findClusters(confs, { maxGap = 10, maxSpan = 18, minTier = 45 } = {}, weights) {
-  // Only cluster events that are individually worth some consideration —
+  // Only cluster events that are individually worth some consideration -
   // otherwise the "trip" is padded with events nobody would attend.
   const worthy = confs
     .map(c => ({ c, s: scoreConference(c, weights) }))
@@ -165,7 +165,7 @@ function coverageByMonth(confs, attending) {
 /* ── IDENTITY RESOLUTION ───────────────────────────────────────────────────
    Rules generate CANDIDATES and a confidence score. Anything confident is
    merged automatically. Anything ambiguous goes to a review queue where the
-   AI adjudicates — because "is this the same person or two people with the
+   AI adjudicates, because "is this the same person or two people with the
    same name" is a judgement call, not a string comparison.             */
 
 const NICKNAMES = {
@@ -265,7 +265,7 @@ function matchConfidence(a, b) {
   else { score += 32; reasons.push("names are similar but not identical"); }
 
   if (sameCo) { score += 30; reasons.push("same company"); }
-  else { score += 4; reasons.push(`different company (${a.company} vs ${b.company}) — job change or different person`); }
+  else { score += 4; reasons.push(`different company (${a.company} vs ${b.company}), job change or different person`); }
 
   if (sameDomain) { score += 14; reasons.push("same email domain"); }
   if (localSim > 0.8 && !sameDomain) { score += 6; reasons.push("email username is a close variant"); }

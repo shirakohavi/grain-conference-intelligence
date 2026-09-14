@@ -185,3 +185,67 @@ tbody tr.picked{background:var(--accent-soft)}
   .months{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
   .contacts-grid{grid-template-columns:1fr}
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Merge layer — the database-view pieces, in the redesign's visual language.
+
+   Status stays a real <select> rather than a styled div: changing it writes
+   to Postgres, so it has to be an actual form control. It borrows the
+   redesign's soft-fill treatment instead of its dot, because a select can't
+   carry a pseudo-element reliably across browsers.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.status{appearance:none;border:0;cursor:pointer;border-radius:6px;padding:4px 24px 4px 9px;
+  font-size:12px;font-weight:600;line-height:1.5;letter-spacing:-.01em;transition:.12s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='currentColor' stroke-width='1.6' fill='none' stroke-linecap='round' opacity='.45'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center}
+.status:hover{filter:brightness(.97)}
+.status:focus{outline:2px solid var(--accent);outline-offset:1px}
+.st-New{background-color:#F1F3F9;color:#5C6590}
+.st-Considering{background-color:#FCF3E4;color:#8A6516}
+.st-Attending{background-color:#E9F0FE;color:#1B5FD9}
+.st-Rejected{background-color:#FCEEEC;color:#B03A2E}
+
+/* Tags: three colours only, so colour means vertical fit rather than decoration.
+   Blue = payments/fintech, sand = travel, grey = everything else. */
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:5px;padding:2px 7px;
+  font-size:11.5px;font-weight:500;line-height:1.5;white-space:nowrap;
+  background:#F1F3F9;color:#5C6590}
+.pill.blue{background:#E9F0FE;color:#1B5FD9}
+.pill.sand{background:#FBF3E7;color:#8A6516}
+.pill.warn{background:#FCF3E4;color:#8A6516}
+.pill.bad{background:#FCEEEC;color:#B03A2E}
+.pill.outline{background:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* The event name is the row's anchor — give it room so it stops wrapping to
+   three lines, and let it read as the primary text. */
+.cell-name{font-weight:600;letter-spacing:-.012em;line-height:1.35;color:var(--ink)}
+th:first-child,td:first-child{min-width:250px}
+
+/* Icons in the nav, replacing the geometric symbols. */
+.nav .ic{width:16px;height:16px;flex:none;opacity:.8}
+.nav.on .ic{opacity:1}
+
+/* Provenance tag: where an event came from. Colour separates the three
+   automated routes from something a person typed in. */
+.pill.src-Manual{background:#F1F3F9;color:#8A93B2}
+.pill.src-AIsearch{background:#EFE9FB;color:#5B3FA8}
+.pill.src-Slack{background:#E6F6EF;color:#1D7A52}
+.pill.src-LinkedIn{background:#E9F0FE;color:#1B5FD9}
+
+/* Activation: filled when a decision has been made, outlined when it has not. */
+.status.act-on{background-color:#EFE9FB;color:#5B3FA8}
+.status.act-off{background-color:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* A dense table is allowed to be wider than the page, but only inside its own
+   scroller. The page itself must never scroll sideways. */
+.tablewrap{overflow-x:auto}
+.tablewrap table{min-width:940px}
+th:first-child,td:first-child{min-width:220px}
+
+/* Grid columns refuse to shrink below their content unless min-width is
+   cleared. Without this the wide table pushes the whole page sideways
+   instead of scrolling inside its own container. */
+.grid > *{min-width:0}
+.main{min-width:0;overflow-x:hidden}

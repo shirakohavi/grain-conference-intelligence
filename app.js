@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   Conference Intelligence — UI + state.
+   Conference Intelligence, UI + state.
    No framework, no build step. Open index.html and it runs.
    REDESIGNED: Notion-style views, quiet inline filters, improved contacts grid.
    ══════════════════════════════════════════════════════════════════════════ */
@@ -16,7 +16,7 @@ const LS = {
 const S = {
   view: "conferences",
   // Conferences, leads and encounters all live in Postgres now. `attending`
-  // is derived from conferences.status rather than kept separately — one
+  // is derived from conferences.status rather than kept separately, one
   // source of truth, so n8n and the app can never disagree.
   attending: new Set(),
   extra: [],                                     // unused: captures go straight to the DB
@@ -47,6 +47,13 @@ const signalFor = name => S.mined.find(m =>
   normName(m.name).includes(normName(name).slice(0, 12)) ||
   normName(name).includes(normName(m.name).slice(0, 12)));
 
+/* Three tag colours, not twenty-six. Blue marks payments and fintech, sand
+   marks travel, Grain's two core verticals, everything else stays grey. */
+const TAG_TONE = v =>
+  /payment|psp|acquir|open banking|fintech|banking|treasury|inclusion|stablecoin|digital assets/i.test(v) ? "blue"
+  : /travel|luxury/i.test(v) ? "sand" : "";
+const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
+
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 const fmtRange = c => c.start === c.end ? `${fmtDate(c.start)} ${c.start.slice(0, 4)}`
@@ -72,30 +79,43 @@ function humanError(m) {
   if (/model/i.test(m) && /not.*(found|exist)|invalid/i.test(m))
     return "That model name isn't available on your key. Change it in Settings.";
   if (/401|authentication|api key/i.test(m)) return "The API key was rejected. Check it in Settings.";
-  if (/429|rate/i.test(m)) return "Rate limited by the provider — wait a moment and retry.";
+  if (/429|rate/i.test(m)) return "Rate limited by the provider, wait a moment and retry.";
   if (/fetch|network/i.test(m)) return "Couldn't reach the provider from the browser.";
   return m;
 }
-const badge = r => r?.__demo ? `<span class="badge">demo response</span>` : `<span class="badge">live</span>`;
+const badge = r => r?.__demo
+  ? `<span class="badge">demo response</span>`
+  : `<span class="badge">live${AI.viaProxy() ? " · via n8n" : ""}</span>`;
 
 /* ── shell ───────────────────────────────────────────────────────────── */
+const IC = {
+  conferences: '<path d="M2 4h12M2 8h12M2 12h12"/>',
+  plan:        '<rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/>',
+  field:       '<path d="M8 3v10M3 8h10"/><rect x="1.5" y="1.5" width="13" height="13" rx="3"/>',
+  contacts:    '<circle cx="6" cy="6" r="2.5"/><path d="M1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><path d="M11 4.2a2.4 2.4 0 010 4.6M12.4 13.8c0-1.6-.5-2.7-1.4-3.4"/>',
+  signals:     '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14.5 14.5"/>',
+  settings:    '<path d="M2 5h12M2 11h12"/><circle cx="6" cy="5" r="1.8"/><circle cx="10.5" cy="11" r="1.8"/>',
+};
+const icon = k => `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
+
 const NAVS = [
-  ["conferences", "◎", "Conferences"],
-  ["plan", "▤", "Plan the year"],
-  ["field", "⚡", "Field mode"],
-  ["contacts", "◆", "Contacts"],
-  ["signals", "◈", "Signal miner"],
-  ["settings", "⚙", "Settings"],
+  ["conferences", "Conferences"],
+  ["plan",        "Plan the year"],
+  ["field",       "Field mode"],
+  ["contacts",    "Contacts"],
+  ["signals",     "Signal miner"],
+  ["settings",    "Settings"],
 ];
 
 function render() {
   const { review } = identities();
-  document.getElementById("nav").innerHTML = NAVS.map(([k, ic, label]) => {
+  document.getElementById("nav").innerHTML = NAVS.map(([k, label]) => {
     let cnt = "";
     if (k === "contacts" && review.length) cnt = `<span class="cnt">${review.length}</span>`;
     if (k === "plan" && S.attending.size) cnt = `<span class="cnt">${S.attending.size}</span>`;
     return `<button class="nav ${S.view === k ? "on" : ""}" onclick="go('${k}')">
-      <span class="ic">${ic}</span>${label}${cnt}</button>`;
+      ${icon(k)}${label}${cnt}</button>`;
   }).join("");
   document.getElementById("main").innerHTML = VIEWS[S.view]();
   if (VIEWS[S.view].after) VIEWS[S.view].after();
@@ -103,7 +123,7 @@ function render() {
 function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 1 — CONFERENCES.  Decide what's worth attending.
+   VIEW 1, CONFERENCES.  Decide what's worth attending.
    REDESIGNED: Quiet inline filter bar instead of boxed inputs.
    ══════════════════════════════════════════════════════════════════════ */
 const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "" };
@@ -126,8 +146,11 @@ VIEWS_CONF = () => {
 
   return `
   <div class="head">
-    <h1>Conferences</h1>
-    <p>Every event scored for Grain's ICP, ranked. The score is arithmetic you can audit — open any row to see
+    <div class="spread">
+      <h1>Conferences</h1>
+      <button class="btn" onclick="openAddConference()">Add conference</button>
+    </div>
+    <p>Every event scored for Grain's ICP, ranked. The score is arithmetic you can audit, open any row to see
        the five inputs and what the tier actually means for a booking decision.</p>
   </div>
 
@@ -163,22 +186,47 @@ VIEWS_CONF = () => {
 
   <div class="grid" style="grid-template-columns:1fr 268px;align-items:start">
     <div class="card">
-      <div class="pad" style="padding-bottom:0"><table>
-        <thead><tr><th style="width:30px"></th><th style="width:46px">Score</th><th>Event</th>
-          <th style="width:120px">When</th><th style="width:150px">Where</th><th style="width:112px">Cost / contact</th>
-          <th style="width:58px">Going</th></tr></thead>
+      <div class="pad tablewrap" style="padding-bottom:6px"><table>
+        <thead><tr>
+          <th>Event</th>
+          <th style="width:148px">Vertical</th>
+          <th style="width:136px">How we show up</th>
+          <th style="width:112px">Status</th>
+          <th style="width:74px">Fit</th>
+          <th style="width:112px">Dates</th>
+          <th style="width:130px">Location</th>
+          <th style="width:96px">Per contact</th>
+        </tr></thead>
         <tbody>${list.map(({ c, s }) => {
           const sig = signalFor(c.name);
           return `<tr onclick="openConf('${c.id}')">
-            <td><span class="tier ${s.tier}">${s.tier}</span></td>
-            <td><span class="score">${s.total}</span></td>
-            <td><div style="font-weight:600">${esc(c.name)}</div>
-                <div class="tiny dim">${c.verticals.join(" · ")}${sig ? ` · <span style="color:var(--accent);font-weight:700">★ raised by ${sig.evidence === "customer" ? "a customer" : "the team"}</span>` : ""}</div></td>
-            <td class="tiny">${fmtRange(c)}</td>
-            <td class="tiny">${esc(c.city)}, ${esc(c.country)}</td>
-            <td class="tiny mono">${eur(s.eff.costPerContact)}<span class="dim"> ×${s.eff.reachable}</span></td>
-            <td onclick="event.stopPropagation();toggleGoing('${c.id}')" style="text-align:center;font-size:16px">
-              ${S.attending.has(c.id) ? "☑" : "<span class='dim'>☐</span>"}</td>
+            <td>
+              <div class="cell-name">${esc(c.name)}</div>
+              <div class="row" style="gap:5px;margin-top:3px">
+                <span class="pill src-${c.source.replace(/\s/g, "")}" title="How this event got into the list">${esc(c.source === "Manual" ? "added by hand" : c.source === "AI search" ? "found by AI" : c.source === "Slack" ? "from Slack" : "from LinkedIn")}</span>
+                ${sig ? `<span class="pill blue">${sig.evidence === "customer" ? "customer signal" : "team signal"}</span>` : ""}
+                ${!c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
+                ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
+              </div>
+            </td>
+            <td><div class="tags">${c.verticals.slice(0, 3).map(tag).join("")}${
+                 c.verticals.length > 3 ? `<span class="pill outline">+${c.verticals.length - 3}</span>` : ""}</div></td>
+            <td onclick="event.stopPropagation()">
+              <select class="status ${c.activation ? "act-on" : "act-off"}"
+                onchange="setActivation('${c.id}', this.value)">
+                <option value=""${!c.activation ? " selected" : ""}>Not decided</option>
+                ${ACTIVATIONS.map(a => `<option${c.activation === a ? " selected" : ""}>${a}</option>`).join("")}
+              </select></td>
+            <td onclick="event.stopPropagation()">
+              <select class="status st-${c.status}" onchange="setStatus('${c.id}', this.value)">
+                ${["New", "Considering", "Attending", "Rejected"].map(o =>
+                  `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
+              </select></td>
+            <td><div class="row" style="gap:7px;flex-wrap:nowrap">
+              <span class="tier ${s.tier}">${s.tier}</span><span class="score">${s.total}</span></div></td>
+            <td class="tiny muted">${fmtRange(c)}</td>
+            <td class="tiny muted">${esc(c.city)}, ${esc(c.country)}</td>
+            <td class="tiny mono muted">${eur(s.eff.costPerContact)}<span class="dim"> · ${s.eff.reachable}</span></td>
           </tr>`; }).join("")}
         </tbody></table>
         ${list.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
@@ -200,7 +248,7 @@ VIEWS_CONF = () => {
       <button class="btn ghost sm" style="width:100%"
         onclick="S.weights={...DEFAULT_WEIGHTS};S.aiCache={};save();render()">Reset to default</button>
       <div class="alert" style="margin-top:13px">
-        <b>Why the ranking may surprise you.</b> Cost efficiency is measured per <i>reachable</i> ICP contact —
+        <b>Why the ranking may surprise you.</b> Cost efficiency is measured per <i>reachable</i> ICP contact -
         one rep can hold about ${MEETINGS_PER_DAY} real conversations a day, so attendance above that stops counting.
         It's why a free Dubai expo can out-rank a €3,670 flagship.
       </div>
@@ -222,6 +270,13 @@ function drawConf(ai) {
   const sig = signalFor(c.name);
   const labels = { icpDensity: "ICP density", seniority: "Decision-maker seniority",
     crossBorder: "Cross-border relevance", efficiency: "Cost efficiency", strategic: "Embedded-partner presence" };
+  const HELP = {
+    icpDensity: "How much of this room is a PSP, travel wholesaler, marketplace or platform carrying FX exposure.",
+    seniority: "Whether the person who owns the FX decision turns up, or sends someone junior.",
+    crossBorder: "Whether the agenda is about money moving between currencies, or domestic banking.",
+    efficiency: "Calculated, not estimated. Cost per conversation you can actually have. See the breakdown below.",
+    strategic: "Whether platforms who could resell Grain are here, not just companies who would buy it.",
+  };
   drawer(`
     <div class="spread"><div>
       <div class="row" style="gap:8px"><span class="tier ${s.tier}">${s.tier}</span>
@@ -230,29 +285,77 @@ function drawConf(ai) {
         ~${c.audienceSize.toLocaleString()} attending · ticket ${eur(c.ticketEur)}</div>
     </div><button class="x" onclick="closeDrawer()">×</button></div>`, `
     <div class="row" style="justify-content:space-between;background:var(--accent-soft);padding:12px 14px;border-radius:9px">
-      <div><div class="tiny" style="color:var(--accent-ink);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Tier ${s.tier} — ${s.label}</div>
+      <div><div class="tiny" style="color:var(--accent-ink);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Tier ${s.tier}, ${s.label}</div>
         <div style="font-size:13px;margin-top:3px">${s.action}</div></div>
       <div style="text-align:right"><div class="score" style="font-size:28px">${s.total}</div>
         <div class="tiny dim">of 100</div></div>
     </div>
 
     ${sig ? `<div class="alert good"><b>★ Raised internally.</b> ${esc(sig.context)}
-      <div class="tiny dim" style="margin-top:3px">${esc(sig.source || "internal signal")} — via ${esc(sig.mentionedBy || "the team")}</div></div>` : ""}
+      <div class="tiny dim" style="margin-top:3px">${esc(sig.source || "internal signal")}, via ${esc(sig.mentionedBy || "the team")}</div></div>` : ""}
 
-    <div><h4>How the ${s.total} is built</h4>
+    <div>
+      <h4>How this score is built</h4>
+      <p class="tiny muted" style="margin:-4px 0 12px;line-height:1.65">
+        Five judgements about this event, each scored 0 to 100. <b>These are estimates, not measured data.</b>
+        They were set by hand, and you can change any of them below. The tool shows the arithmetic so you can
+        disagree with one input instead of distrusting the whole number.</p>
+
       ${Object.keys(labels).map(k => `
-        <div class="row tiny" style="margin-bottom:6px;gap:9px">
-          <span style="width:170px">${labels[k]}</span>
-          <span class="bar"><i style="width:${s.parts[k]}%"></i></span>
-          <b class="mono" style="width:26px;text-align:right">${s.parts[k]}</b>
-          <span class="dim" style="width:44px;text-align:right">×${S.weights[k]}</span>
+        <div style="padding:9px 0;border-top:1px solid var(--line)">
+          <div class="spread" style="margin-bottom:5px">
+            <span style="font-size:12.5px;font-weight:600">${labels[k]}</span>
+            <span class="tiny dim">${s.parts[k]} out of 100, counts for ${Math.round(S.weights[k] / Object.values(S.weights).reduce((a,b)=>a+b,0) * 100)}% of the score</span>
+          </div>
+          <div class="row" style="gap:9px;flex-wrap:nowrap">
+            <input type="range" min="0" max="100" value="${s.parts[k]}" style="flex:1;accent-color:var(--accent)"
+              ${k === "efficiency" ? "disabled title='Calculated from cost and attendance, not editable'" :
+                `oninput="editEstimate('${c.id}','${k}',+this.value)"`}>
+            <b class="mono" style="width:28px;text-align:right">${s.parts[k]}</b>
+          </div>
+          <div class="tiny dim" style="margin-top:3px">${HELP[k]}</div>
         </div>`).join("")}
-      <div class="tiny dim" style="margin-top:9px;line-height:1.6">
-        Raw weighted average ${s.raw}, stretched onto 0–100 (a raw 15 is an irrelevant event, a raw 75 the realistic
-        best case). Cost efficiency comes from ${eur(c.ticketEur)} ticket + ${eur(s.eff.travel)} travel from Tel Aviv
-        ÷ ${s.eff.reachable} reachable ICP contacts over ${s.eff.days} day${s.eff.days > 1 ? "s" : ""}
-        = <b>${eur(s.eff.costPerContact)} per qualified conversation</b>.
+
+      <div style="border-top:2px solid var(--line);margin-top:12px;padding-top:12px">
+        <h4>The arithmetic, in full</h4>
+        <div class="mono" style="font-size:11.5px;line-height:1.9;color:var(--ink2)">
+          ${Object.keys(labels).map(k =>
+            `${String(s.parts[k]).padStart(3)} × ${String(S.weights[k]).padStart(2)}`).join("<br>")}
+          <br>─────────
+          <br>÷ ${Object.values(S.weights).reduce((a,b)=>a+b,0)} = <b>${s.raw}</b> raw
+          <br>scaled to <b style="font-size:14px">${s.total}</b> out of 100
+        </div>
+        <p class="tiny dim" style="margin-top:9px;line-height:1.6">
+          Real conferences only ever score between about 14 and 80 raw, so everything would bunch in the middle.
+          That band is stretched onto 0 to 100 so the tiers separate. The ranking does not change, only the number
+          you read.</p>
       </div>
+    </div>
+
+    <div>
+      <h4>Where the ${eur(s.eff.costPerContact)} per contact comes from</h4>
+      <div style="background:var(--bg);border-radius:var(--r);padding:13px;font-size:12.5px;line-height:2">
+        <div class="spread"><span>Ticket</span><b class="mono">${eur(c.ticketEur)}</b></div>
+        <div class="spread"><span>Flights and hotel from Tel Aviv</span><b class="mono">${eur(s.eff.travel)}</b></div>
+        <div class="spread" style="border-top:1px solid var(--line);padding-top:5px">
+          <span><b>Total to send one rep</b></span><b class="mono">${eur(c.ticketEur + s.eff.travel)}</b></div>
+        <div class="spread" style="margin-top:7px">
+          <span>Days on the floor</span><b class="mono">${s.eff.days}</b></div>
+        <div class="spread"><span>Real conversations per rep per day</span><b class="mono">${MEETINGS_PER_DAY}</b></div>
+        <div class="spread"><span>People here who fit our ICP</span>
+          <b class="mono">${Math.round(c.audienceSize * c.icpDensity / 100).toLocaleString()}</b></div>
+        <div class="spread" style="border-top:1px solid var(--line);padding-top:5px">
+          <span><b>Conversations you can actually have</b></span><b class="mono">${s.eff.reachable}</b></div>
+        <div class="spread" style="border-top:2px solid var(--line);padding-top:7px;margin-top:5px">
+          <span><b>Cost per useful conversation</b></span>
+          <b class="mono" style="font-size:14px">${eur(s.eff.costPerContact)}</b></div>
+      </div>
+      <p class="tiny dim" style="margin-top:8px;line-height:1.6">
+        ${c.audienceSize * c.icpDensity / 100 > MEETINGS_PER_DAY * s.eff.days
+          ? `There are ${Math.round(c.audienceSize * c.icpDensity / 100).toLocaleString()} people here who fit,
+             but one rep can only reach ${s.eff.reachable} of them in ${s.eff.days} day${s.eff.days > 1 ? "s" : ""}.
+             The rest cost nothing and are worth nothing, which is why a bigger event is not automatically a better one.`
+          : `Small enough that a rep can get round most of the people who fit.`}</p>
     </div>
 
     <div><h4>Our note on file</h4><div style="font-size:13px">${esc(c.note)}</div></div>
@@ -280,6 +383,40 @@ function drawConf(ai) {
       ${c.start >= TODAY ? `<button class="btn ghost" onclick="closeDrawer();S.view='field';S.fieldConf='${c.id}';render()">Capture a lead here</button>` : ""}
     </div>`);
 }
+/* Estimates are opinions, so they are editable in place. Changing one
+   re-scores the event and saves, which is the point: a sales lead who thinks
+   the room is more junior than we assumed can say so. */
+let _estTimer;
+async function editEstimate(id, key, value) {
+  const c = confById(id); if (!c) return;
+  c[key] = value;
+  drawConf(S.aiCache[`interp:${id}:${JSON.stringify(S.weights)}`]);
+  const col = { icpDensity: "icp_density", seniority: "seniority",
+                crossBorder: "cross_border", strategic: "strategic" }[key];
+  if (!col) return;
+  clearTimeout(_estTimer);
+  _estTimer = setTimeout(async () => {
+    try { await DB.sb.from("conferences").update({ [col]: value }).eq("id", id); render(); }
+    catch (e) { toast("Couldn't save that estimate: " + e.message, true); }
+  }, 700);
+}
+
+async function setActivation(id, activation) {
+  const c = confById(id); if (!c) return;
+  c.activation = activation; render();
+  try { await DB.sb.from("conferences").update({ activation }).eq("id", id); }
+  catch (e) { toast("Couldn't save that: " + e.message, true); }
+}
+
+async function setStatus(id, status) {
+  const c = confById(id); if (!c) return;
+  c.status = status;
+  status === "Attending" ? S.attending.add(id) : S.attending.delete(id);
+  render();
+  try { await DB.setConferenceStatus(id, status); }
+  catch (e) { toast("Couldn't save that status: " + e.message, true); }
+}
+
 async function toggleGoing(id) {
   const going = S.attending.has(id);
   const status = going ? "New" : "Attending";
@@ -306,7 +443,7 @@ function toast(msg, bad) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 2 — PLAN THE YEAR.  Coverage, gaps, clusters, clashes, budget.
+   VIEW 2, PLAN THE YEAR.  Coverage, gaps, clusters, clashes, budget.
    ══════════════════════════════════════════════════════════════════════ */
 VIEWS_PLAN = () => {
   const fut = upcoming();
@@ -340,7 +477,7 @@ VIEWS_PLAN = () => {
   ${(gaps.length || under.length || clashes.length) ? `
   <div class="grid" style="gap:9px;margin-bottom:16px">
     ${under.length ? `<div class="alert bad"><b>Under-invested ${under.length > 1 ? "regions" : "region"}.</b>
-      ${under.map(r => `<b>${r}</b> has ${byRegion[r].a} A-tier event${byRegion[r].a > 1 ? "s" : ""} coming up`).join(", and ")} —
+      ${under.map(r => `<b>${r}</b> has ${byRegion[r].a} A-tier event${byRegion[r].a > 1 ? "s" : ""} coming up`).join(", and ")} -
       with nothing booked.</div>` : ""}
     ${gaps.length ? `<div class="alert"><b>${gaps.length} month${gaps.length > 1 ? "s" : ""} with an A-tier event and no coverage:</b>
       ${gaps.map(monthName).join(", ")}.</div>` : ""}
@@ -356,7 +493,7 @@ VIEWS_PLAN = () => {
       return `<div class="mon ${on ? "on" : gap ? "gap" : ""}">
         <div class="mh"><span>${monthName(k)}</span><span>${on ? `${on} booked` : gap ? "gap" : ""}</span></div>
         ${m.all.map(c => { const s = scoreConference(c, S.weights);
-          return `<div class="ev ${S.attending.has(c.id) ? "" : "off"}" onclick="openConf('${c.id}')" title="${esc(c.name)} — ${esc(c.city)}">
+          return `<div class="ev ${S.attending.has(c.id) ? "" : "off"}" onclick="openConf('${c.id}')" title="${esc(c.name)}, ${esc(c.city)}">
             <b class="tier ${s.tier}" style="width:15px;height:15px;font-size:9px">${s.tier}</b>
             <span>${esc(c.name.length > 26 ? c.name.slice(0, 25) + "…" : c.name)}</span></div>`; }).join("")}
       </div>`; }).join("")}
@@ -398,7 +535,7 @@ VIEWS_PLAN = () => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 3 — FIELD MODE.  The show-floor interface.
+   VIEW 3, FIELD MODE.  The show-floor interface.
    The design constraint: a rep is standing up, holding a phone, and the
    person in front of them is still talking. Speed beats completeness, so
    the input is one box and the structuring happens afterwards.
@@ -412,13 +549,13 @@ VIEWS_FIELD = () => {
   const today = allEncounters().filter(e => e.confId === conf?.id).length;
   return `
   <div class="head"><h1>Field mode</h1>
-    <p>One box. Say what you'd say to a colleague and keep talking — it gets structured after you hit save,
+    <p>One box. Say what you'd say to a colleague and keep talking, it gets structured after you hit save,
        not while the person is standing there.</p></div>
 
   <div class="field">
     <div class="spread" style="margin-bottom:10px">
       <select class="inp" style="width:auto" onchange="S.fieldConf=this.value;LS.set('fieldConf',this.value);render()">
-        ${opts.map(c => `<option value="${c.id}"${conf?.id === c.id ? " selected" : ""}>${esc(c.name)} — ${esc(c.city)}</option>`).join("")}
+        ${opts.map(c => `<option value="${c.id}"${conf?.id === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}</option>`).join("")}
       </select>
       <span class="tiny dim">${today} logged here</span>
     </div>
@@ -461,10 +598,10 @@ async function doCapture() {
   const conf = confById(S.fieldConf) || upcoming()[0];
   const btn = document.getElementById("capbtn");
   btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Structuring…`;
-  const r = await ask(`cap:${raw.slice(0, 60)}`, () => AI.parseCapture(raw, conf.name), () => DEMO.capture);
+  const r = await ask(`cap:${raw.slice(0, 60)}`, () => AI.parseCapture(raw, conf.name, conf.id), () => DEMO.capture);
   btn.disabled = false; btn.textContent = "Save lead";
   if (r.__error) { document.getElementById("draft").innerHTML =
-    `<div class="alert bad"><b>AI unavailable.</b> ${esc(r.__error)} The raw note is saved — nothing is lost.</div>`;
+    `<div class="alert bad"><b>AI unavailable.</b> ${esc(r.__error)} The raw note is saved, nothing is lost.</div>`;
     return commit({ name: "(unparsed)", company: "", title: "", email: "", intent: "warm", note: raw }, conf, raw); }
   S.draft = { r, conf, raw };
   document.getElementById("draft").innerHTML = `
@@ -472,7 +609,7 @@ async function doCapture() {
       <h4>Check before it saves ${badge(r)}</h4>
       <div class="kv" style="margin-bottom:10px">
         ${[["name", "Name"], ["company", "Company"], ["title", "Title"], ["email", "Email"], ["phone", "Phone"]].map(([k, l]) =>
-          `<label>${l}</label><input class="inp" id="f_${k}" value="${esc(r[k] || "")}" placeholder="—">`).join("")}
+          `<label>${l}</label><input class="inp" id="f_${k}" value="${esc(r[k] || "")}" placeholder="-">`).join("")}
         <label>Signal</label>
         <select class="inp" id="f_intent">${["cold", "warm", "hot"].map(i =>
           `<option${r.intent === i ? " selected" : ""}>${i}</option>`).join("")}</select>
@@ -480,15 +617,23 @@ async function doCapture() {
       </div>
       ${(r.icpSignals || []).length ? `<h4 style="margin-bottom:5px">ICP signals it spotted</h4>
         <div class="chips" style="margin-bottom:10px">${r.icpSignals.map(s => `<span class="pill" style="background:var(--accent-soft);color:var(--accent-ink)">${esc(s)}</span>`).join("")}</div>` : ""}
+      ${(r.duplicates || []).length ? `<div class="alert bad" style="margin-bottom:10px">
+        <b>We may already know them.</b>
+        ${r.duplicates.map(d => `<div style="margin-top:4px">${esc(d.name)} · ${esc(d.company)}
+          <span class="pill ${d.confidence >= 90 ? "blue" : "warn"}">${d.confidence}% · ${esc(d.reason)}</span>
+          <button class="btn sm" style="margin-left:6px" onclick="commitDraft('${d.lead_id}')">Same person, log against them</button>
+        </div>`).join("")}
+        <div class="tiny" style="margin-top:6px">Or confirm below to create a new person.</div></div>` : ""}
       ${(r.missing || []).length ? `<div class="alert" style="margin-bottom:10px"><b>Grab before they walk off:</b> ${r.missing.map(esc).join(" · ")}</div>` : ""}
       <button class="btn" onclick="commitDraft()">Confirm &amp; save</button>
       <button class="btn ghost" onclick="S.draft=null;document.getElementById('draft').innerHTML=''">Discard</button>
     </div>`;
 }
-function commitDraft() {
+function commitDraft(existingLeadId) {
   const g = id => document.getElementById(id)?.value || "";
   commit({ name: g("f_name"), company: g("f_company"), title: g("f_title"), email: g("f_email"),
-    phone: g("f_phone"), intent: g("f_intent"), note: g("f_note") }, S.draft.conf, S.draft.raw);
+    phone: g("f_phone"), intent: g("f_intent"), note: g("f_note") },
+    S.draft.conf, S.draft.raw, existingLeadId || undefined);
 }
 async function commit(rec, conf, raw, existingLeadId) {
   try {
@@ -514,14 +659,14 @@ async function commit(rec, conf, raw, existingLeadId) {
     const { contacts } = identities();
     const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
     toast(c && c.touches > 1
-      ? `Saved. ${c.name} has now been met ${c.touches} times — ${c.pattern.toLowerCase()}.`
+      ? `Saved. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
       : "Saved.");
   } catch (e) { toast("Save failed: " + e.message, true); }
 }
 const REP_NAME = () => localStorage.getItem("rep_name") || "You";
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 4 — CONTACTS.  Cross-conference intelligence.
+   VIEW 4, CONTACTS.  Cross-conference intelligence.
    REDESIGNED: Repeat contacts use Notion-style grid cards with better visual hierarchy.
    Rules find the candidates, AI settles the ambiguous ones and reads the
    arc. A repeat contact is only interesting if the temperature moved.
@@ -533,9 +678,13 @@ VIEWS_CONTACTS = () => {
   const enc = allEncounters().length;
 
   return `
-  <div class="head"><h1>Contacts</h1>
+  <div class="head">
+    <div class="spread">
+      <h1>Contacts</h1>
+      <button class="btn" onclick="openAddPerson()">Add a person</button>
+    </div>
     <p>${enc} encounters across ${new Set(allEncounters().map(e => e.confId)).size} conferences resolved into
-       ${contacts.length} people. ${repeat.length} have been met more than once — those are the only ones where a
+       ${contacts.length} people. ${repeat.length} have been met more than once, those are the only ones where a
        pattern exists to read.</p></div>
 
   ${review.length ? `
@@ -543,7 +692,7 @@ VIEWS_CONTACTS = () => {
     <div class="spread" style="margin-bottom:4px"><h3 style="margin:0">${review.length} to adjudicate</h3>
       <span class="tiny dim">rule confidence 50–84 · too close to merge automatically</span></div>
     <p class="tiny muted" style="margin:0 0 12px;max-width:78ch">Above 85 the tool merges silently; below 50 it keeps
-      them apart. In between, string similarity has run out of road — the answer is in what the rep wrote down, which
+      them apart. In between, string similarity has run out of road, the answer is in what the rep wrote down, which
       is exactly the kind of question a model can answer and a rule cannot.</p>
     ${review.map(r => `
       <div style="border-top:1px solid var(--line2);padding:12px 0" id="rv_${r.key.replace(/\|/g, "_")}">
@@ -586,7 +735,7 @@ VIEWS_CONTACTS = () => {
       </div>`).join("")}
   </div>
 
-  <h3>Met once <span class="tiny dim" style="font-weight:400">— no pattern yet</span></h3>
+  <h3>Met once <span class="tiny dim" style="font-weight:400">- no pattern yet</span></h3>
   <div class="card"><div class="pad" style="padding-bottom:4px"><table>
     <thead><tr><th>Name</th><th>Company</th><th>Where</th><th style="width:70px">Signal</th><th style="width:88px">HubSpot</th></tr></thead>
     <tbody>${once.map(c => `<tr onclick="openContact('${c.id}')">
@@ -607,7 +756,7 @@ async function adjudicate(key) {
   slot.innerHTML = `<div class="ai"><h4>Adjudicating <span class="spin"></span></h4></div>`;
   const res = await ask(`adj:${key}`, () => AI.adjudicateMatch(r.a, r.b, r.score, r.reasons),
     () => DEMO.adjudicate[r.a.name] || { verdict: "unsure", confidence: 50,
-      reasoning: "Not enough in the notes to separate these.", tell: "—" });
+      reasoning: "Not enough in the notes to separate these.", tell: "-" });
   if (res.__error) { slot.innerHTML = `<div class="alert bad">${esc(res.__error)}</div>`; return; }
   const same = res.verdict === "same";
   slot.innerHTML = `<div class="ai">
@@ -664,7 +813,7 @@ function drawContact(c, ai) {
           <h4 style="margin-bottom:4px">The nudge</h4>
           <div style="font-size:13px">${esc(ai.nudge)}</div></div>
         <div class="tiny muted" style="margin-top:9px"><b>Don't:</b> ${esc(ai.avoid)}</div>
-      </div>`) : `<div class="alert"><b>One encounter so far.</b> There's no arc to read until you meet them again —
+      </div>`) : `<div class="alert"><b>One encounter so far.</b> There's no arc to read until you meet them again -
         the tool deliberately doesn't invent a pattern from a single data point.</div>`}
 
     <div><h4>Every encounter</h4>
@@ -708,7 +857,7 @@ async function pushOne(id) {
       grain_priority: c.priority,
       hs_lead_status: c.encounters[c.encounters.length - 1].intent === "hot" ? "OPEN_DEAL" : "IN_PROGRESS",
     },
-    notes: c.encounters.map(e => ({ timestamp: e.at, body: `[${e.confName}] ${e.note} — logged by ${e.rep}` })),
+    notes: c.encounters.map(e => ({ timestamp: e.at, body: `[${e.confName}] ${e.note}, logged by ${e.rep}` })),
   };
   const relay = localStorage.getItem("hubspot_relay");
   const out = document.getElementById("hs_out");
@@ -726,7 +875,7 @@ async function pushOne(id) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 5 — SIGNAL MINER.  The feature that doesn't exist in the brief.
+   VIEW 5, SIGNAL MINER.  The feature that doesn't exist in the brief.
 
    Conference decisions at most companies are already being made, badly, in
    Slack threads and meeting summaries nobody re-reads. The list of events
@@ -742,7 +891,7 @@ VIEWS_SIGNALS = () => {
   <div class="head"><h1>Signal miner</h1>
     <p>Conference decisions are already being made in Slack threads and meeting notes that nobody re-reads.
        This pulls the events out of that text, marks who raised them, and flags the ones a
-       <b>customer</b> mentioned — which is a different quality of signal from one of us having an idea.</p></div>
+       <b>customer</b> mentioned, which is a different quality of signal from one of us having an idea.</p></div>
 
   <div class="grid" style="grid-template-columns:1fr 320px;align-items:start">
     <div>
@@ -791,7 +940,7 @@ VIEWS_SIGNALS = () => {
             </div>`; }).join("")}
           ${concerns.length ? `<div class="alert bad" style="margin-top:13px"><b>The headline.</b>
             ${concerns.length} event${concerns.length > 1 ? "s were" : " was"} raised as something we missed or
-            didn't know about — ${custRaised.length ? `${custRaised.length} of them by customers or prospects rather than by us.` : ""}
+            didn't know about, ${custRaised.length ? `${custRaised.length} of them by customers or prospects rather than by us.` : ""}
             That's the gap between what the team already knows and what the plan reflects.</div>` : ""}
         </div>` : `<div class="empty">Load a sample and press <b>Find the conferences</b>.</div>`}
       </div>
@@ -800,12 +949,12 @@ VIEWS_SIGNALS = () => {
     <div class="card pad">
       <h4>Why this is the AI feature</h4>
       <p class="tiny muted" style="line-height:1.65">A conference name inside a Slack message is misspelled,
-        abbreviated, mixed into unrelated chat, and carries the thing that actually matters —
-        <i>whether a customer raised it</i> — only in the surrounding sentence.
+        abbreviated, mixed into unrelated chat, and carries the thing that actually matters -
+        <i>whether a customer raised it</i>, only in the surrounding sentence.
         No regex survives that. Reading unstructured language and judging what it implies is the one job
         where a model is unambiguously the right tool.</p>
       <p class="tiny muted" style="line-height:1.65">Today it reads a paste box. The same function takes its input
-        from a Slack MCP connector and a meeting-notes API without changing — the parsing is the hard part,
+        from a Slack MCP connector and a meeting-notes API without changing, the parsing is the hard part,
         and it's done.</p>
       <div class="alert good tiny" style="margin-top:10px">Anything found here shows as a <b>★</b> on the
         Conferences tab, so the signal lands where the decision is made rather than in a thread.</div>
@@ -840,7 +989,7 @@ async function discoverNew() {
   if (r.__error) { out.innerHTML = `<div class="alert bad">${esc(r.__error)}</div>`; return; }
   out.innerHTML = `<div class="card pad">
     <div class="spread" style="margin-bottom:4px"><h3 style="margin:0">Events we don't track</h3>${badge(r)}</div>
-    <p class="tiny muted" style="margin:0 0 10px">Each one comes with the honest reason it might not be worth it —
+    <p class="tiny muted" style="margin:0 0 10px">Each one comes with the honest reason it might not be worth it -
       a suggestion without a risk attached isn't advice.</p>
     ${(r.suggestions || []).map(s => `<div style="border-top:1px solid var(--line2);padding:11px 0">
       <div class="spread"><b>${esc(s.name)}</b>
@@ -851,7 +1000,7 @@ async function discoverNew() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VIEW 6 — SETTINGS.  Keys live in the browser, never in the source.
+   VIEW 6, SETTINGS.  Keys live in the browser, never in the source.
    ══════════════════════════════════════════════════════════════════════ */
 VIEWS_SETTINGS = () => {
   const c = AI.cfg();
@@ -862,7 +1011,36 @@ VIEWS_SETTINGS = () => {
 
   <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="card pad">
+      <h3>Automation</h3>
+      <p class="tiny muted" style="margin:-4px 0 10px;line-height:1.6">
+        With an n8n base URL set, AI calls go through the <span class="mono">grain-ai</span> webhook and the
+        API key stays in n8n's credential store. That is what lets anyone open the live link and get real
+        answers without pasting a key of their own.</p>
+      <div class="kv">
+        <label>n8n base URL</label>
+        <input class="inp" placeholder="https://admin-n8n.optimally-ai.com"
+          value="${esc(localStorage.getItem("n8n_base") || "")}"
+          oninput="localStorage.setItem('n8n_base',this.value.replace(/\\/+$/,''))">
+        <label>Your name</label>
+        <input class="inp" placeholder="who is logging leads" value="${esc(localStorage.getItem("rep_name") || "")}"
+          oninput="localStorage.setItem('rep_name',this.value)">
+      </div>
+      <div class="row" style="margin-top:11px">
+        <button class="btn" onclick="testProxy()">Test the webhook</button>
+        <span id="proxytest" class="tiny"></span>
+      </div>
+      <div class="alert ${AI.viaProxy() ? "good" : ""}" style="margin-top:12px">
+        <b>Route: ${AI.mode()}.</b>
+        ${AI.mode() === "proxy" ? "Calls go through n8n. Visitors need no key of their own."
+          : AI.mode() === "key" ? "Calls go straight from this browser using the key below."
+          : "No route configured, so AI features return pre-written responses badged <i>demo</i>. Nothing dead-ends."}
+      </div>
+    </div>
+
+    <div class="card pad">
       <h3>AI provider</h3>
+      <p class="tiny muted" style="margin:-4px 0 10px">A fallback for when n8n is unreachable, and the
+        answer to the brief's "keys configurable by the user, not hardcoded".</p>
       <div class="kv" style="margin-bottom:12px">
         <label>Provider</label>
         <select class="inp" onchange="localStorage.setItem('ai_provider',this.value);localStorage.removeItem('ai_model');render()">
@@ -884,13 +1062,13 @@ VIEWS_SETTINGS = () => {
       <div class="alert ${AI.hasKey() ? "good" : ""}" style="margin-top:12px">
         ${AI.hasKey() ? `<b>Live mode.</b> Every AI feature calls the provider.`
           : `<b>Demo mode.</b> No key set, so AI features return pre-written responses of the same shape,
-             badged <i>demo response</i>. Everything stays clickable — the tool doesn't dead-end on a missing key.`}
+             badged <i>demo response</i>. Everything stays clickable, the tool doesn't dead-end on a missing key.`}
       </div>
     </div>
 
     <div class="card pad">
       <h3>HubSpot</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px;line-height:1.6">HubSpot's API can't be called from a browser —
+      <p class="tiny muted" style="margin:-4px 0 10px;line-height:1.6">HubSpot's API can't be called from a browser -
         no CORS, and a private-app token in client-side JavaScript would be readable by anyone who opens the page.
         So the tool builds the exact payload and POSTs it to a relay you control (a Make/Zapier webhook or a small
         serverless function). No relay set means it shows the payload rather than pretending to sync.</p>
@@ -914,6 +1092,26 @@ VIEWS_SETTINGS = () => {
     </div>
   </div>`;
 };
+async function testProxy() {
+  const el = document.getElementById("proxytest");
+  const base = localStorage.getItem("n8n_base");
+  if (!base) { el.innerHTML = `<b style="color:var(--bad)">No URL set.</b>`; return; }
+  el.innerHTML = `<span class="spin"></span> Calling…`;
+  try {
+    const r = await fetch(base.replace(/\/+$/, "") + "/webhook/grain-ai", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task: "ask", system: "Reply with JSON only.", prompt: 'Return {"ok":true}' }),
+    });
+    const body = await r.text();
+    el.innerHTML = r.ok
+      ? `<b style="color:var(--accent)">Working.</b> <span class="dim">${esc(body.slice(0, 70))}</span>`
+      : `<b style="color:var(--bad)">HTTP ${r.status}.</b> <span class="dim">${
+          r.status === 404 ? "Flow not found or not activated in n8n." : esc(body.slice(0, 70))}</span>`;
+  } catch (e) {
+    el.innerHTML = `<b style="color:var(--bad)">Unreachable.</b> <span class="dim">${esc(e.message)}</span>`;
+  }
+}
+
 async function testKey() {
   const el = document.getElementById("keytest");
   el.innerHTML = `<span class="spin"></span> Testing…`;
@@ -973,7 +1171,7 @@ function fatal(msg) {
     <div class="card pad">
       <h3>What to check</h3>
       <ul style="font-size:13px;line-height:1.8;color:var(--ink2)">
-        <li>The Supabase project is awake — free projects pause after a week idle.</li>
+        <li>The Supabase project is awake, free projects pause after a week idle.</li>
         <li><span class="mono">SUPABASE_URL</span> and the anon key in <span class="mono">config.js</span> match the project.</li>
         <li>Row Level Security has a policy allowing this role to read.</li>
       </ul>
@@ -992,3 +1190,334 @@ function fatal(msg) {
     DB.onChange(() => { clearTimeout(t); t = setTimeout(() => reload().catch(() => {}), 400); });
   } catch (e) { fatal(e.message); }
 })();
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADD A CONFERENCE
+
+   The brief asks that a non-developer can keep this up to date. A form is
+   that. The score updates live as the estimates are set, so whoever fills
+   it in can see what their judgement does to the ranking instead of
+   finding out later.
+   ══════════════════════════════════════════════════════════════════════ */
+const REGIONS = ["Europe", "North America", "Middle East", "Asia-Pacific", "Africa", "South America"];
+
+/* How we show up, not just whether we go. Grain's own LinkedIn shows they
+   rarely just attend: they share a partner's booth, run a gift table, put
+   someone on stage. That is a planning decision with a cost, so it is a field. */
+const ACTIVATIONS = [
+  "Attending only",
+  "Booth",
+  "Partner booth",
+  "Speaking slot",
+  "Panel",
+  "Roundtable dinner",
+  "Hosted meeting room",
+  "Side event",
+  "Sponsored coffee cart",
+  "Pre-event drinks",
+  "Workshop",
+  "Sponsor",
+];
+const SOURCES = ["Manual", "AI search", "Slack", "LinkedIn"];
+S.newConf = null;
+
+function openAddConference() {
+  S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",
+    verticals: [], audienceSize: 1000, ticketEur: 500,
+    icpDensity: 50, seniority: 50, crossBorder: 50, strategic: 50,
+    status: "New", source: "Manual", activation: "", datesConfirmed: true, note: "" };
+  drawAddConf();
+}
+
+function drawAddConf() {
+  const d = S.newConf;
+  // Score the draft exactly as a saved row would be scored, same function.
+  const preview = (d.start && d.end)
+    ? scoreConference({ ...d, id: "draft" }, S.weights) : null;
+  const F = (k, label, type = "text", extra = "") =>
+    `<label>${label}</label><input class="inp" type="${type}" value="${esc(d[k] ?? "")}" ${extra}
+       oninput="S.newConf['${k}']=${type === "number" ? "+this.value" : "this.value"};drawAddConf()">`;
+  const SLIDER = (k, label, help) => `
+    <div style="margin-bottom:13px">
+      <div class="spread tiny" style="margin-bottom:3px">
+        <span style="font-weight:550">${label}</span><b class="mono">${d[k]}</b></div>
+      <input type="range" min="0" max="100" value="${d[k]}" style="width:100%;accent-color:var(--accent)"
+        oninput="S.newConf['${k}']=+this.value;drawAddConf()">
+      <div class="tiny dim" style="margin-top:2px">${help}</div>
+    </div>`;
+
+  drawer(`<div class="spread"><h3 style="margin:0">Add a conference</h3>
+      <button class="x" onclick="S.newConf=null;closeDrawer()">×</button></div>
+    <div class="tiny dim" style="margin-top:4px">Saves to the shared database. Everyone sees it immediately.</div>`,
+  `
+    <div class="kv">
+      ${F("name", "Name")}
+      ${F("start", "Starts", "date")}
+      ${F("end", "Ends", "date")}
+      ${F("city", "City")}
+      ${F("country", "Country")}
+      <label>Region</label>
+      <select class="inp" onchange="S.newConf.region=this.value;drawAddConf()">
+        ${REGIONS.map(r => `<option${d.region === r ? " selected" : ""}>${r}</option>`).join("")}</select>
+      <label>Verticals</label>
+      <input class="inp" value="${esc(d.verticals.join(", "))}" placeholder="Payments, Travel Tech"
+        oninput="S.newConf.verticals=this.value.split(',').map(s=>s.trim()).filter(Boolean);drawAddConf()">
+      ${F("audienceSize", "Attendance", "number")}
+      ${F("ticketEur", "Ticket (EUR)", "number")}
+      <label>How we show up</label>
+      <select class="inp" onchange="S.newConf.activation=this.value;drawAddConf()">
+        <option value="">Not decided</option>
+        ${ACTIVATIONS.map(a => `<option${d.activation === a ? " selected" : ""}>${a}</option>`).join("")}
+      </select>
+      <label>Source</label>
+      <select class="inp" onchange="S.newConf.source=this.value;drawAddConf()">
+        ${SOURCES.map(o => `<option${d.source === o ? " selected" : ""}>${o}</option>`).join("")}
+      </select>
+      <label>Dates</label>
+      <select class="inp" onchange="S.newConf.datesConfirmed=this.value==='yes';drawAddConf()">
+        <option value="yes"${d.datesConfirmed ? " selected" : ""}>Confirmed</option>
+        <option value="no"${!d.datesConfirmed ? " selected" : ""}>Estimated, flag it</option></select>
+      <label>Note</label>
+      <textarea class="inp" style="min-height:56px" placeholder="What's the honest read on this event?"
+        oninput="S.newConf.note=this.value">${esc(d.note)}</textarea>
+    </div>
+
+    <div>
+      <h4>Your estimates</h4>
+      <p class="tiny muted" style="margin:-4px 0 12px">These are judgement calls, not facts. The tool
+        shows its arithmetic precisely so a sales lead can disagree with an input rather than the score.</p>
+      ${SLIDER("icpDensity", "ICP density", "Share of the room that looks like a PSP, travel wholesaler, marketplace or platform carrying FX exposure")}
+      ${SLIDER("seniority", "Decision-maker seniority", "Is the person who owns the FX decision personally there, or do they send juniors?")}
+      ${SLIDER("crossBorder", "Cross-border relevance", "Is the agenda about multi-currency flow, or domestic banking?")}
+      ${SLIDER("strategic", "Embedded-partner presence", "Platforms who could resell Grain, not just buy it")}
+    </div>
+
+    ${preview ? `<div class="ai">
+      <h4>Scored live</h4>
+      <div class="row" style="gap:10px;margin-bottom:8px">
+        <span class="tier ${preview.tier}">${preview.tier}</span>
+        <span class="score" style="font-size:24px">${preview.total}</span>
+        <span class="muted" style="font-size:13px">${preview.label}</span>
+      </div>
+      <div style="font-size:13px">${preview.action}</div>
+      <div class="tiny dim" style="margin-top:8px">
+        ${eur(d.ticketEur)} ticket + ${eur(preview.eff.travel)} travel from Tel Aviv
+        ÷ ${preview.eff.reachable} reachable ICP contacts over ${preview.eff.days} day${preview.eff.days > 1 ? "s" : ""}
+        = <b>${eur(preview.eff.costPerContact)} per qualified conversation</b>
+      </div></div>`
+      : `<div class="alert">Set the dates to see the score.</div>`}
+
+    <div class="row">
+      <button class="btn" onclick="saveConference()" ${!(d.name && d.start && d.end) ? "disabled" : ""}>Add to the database</button>
+      <button class="btn ghost" onclick="S.newConf=null;closeDrawer()">Cancel</button>
+    </div>`);
+}
+
+async function saveConference() {
+  const d = S.newConf;
+  const id = d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)
+    + "-" + d.start.slice(2, 4);
+  try {
+    await DB.addConference({
+      id, name: d.name, start_date: d.start, end_date: d.end,
+      city: d.city, country: d.country, region: d.region, verticals: d.verticals,
+      audience_size: d.audienceSize, ticket_eur: d.ticketEur,
+      icp_density: d.icpDensity, seniority: d.seniority,
+      cross_border: d.crossBorder, strategic: d.strategic,
+      status: d.status, source: d.source || "Manual", activation: d.activation || "",
+      dates_confirmed: d.datesConfirmed, note: d.note,
+    });
+    S.newConf = null; closeDrawer(); await reload();
+    toast(`${d.name} added.`);
+  } catch (e) { toast("Couldn't save: " + e.message, true); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADD A PERSON, email first, then ask
+
+   Shira's design, and it is the right sequence. Most tools take the whole
+   record and detect duplicates afterwards, by which time the rep has typed
+   everything twice and the person has walked off.
+
+   Here the work email goes in first and is searched immediately. If it
+   finds someone, the rep is shown who, with their history, and asked the
+   only question that matters: is this the same person? That question gets
+   answered while the human is still standing there, which is the one
+   moment anybody actually knows the answer.
+
+   Three stages: email -> confirm identity -> log the encounter.
+   ══════════════════════════════════════════════════════════════════════ */
+S.ap = null;
+
+function openAddPerson(confId) {
+  S.ap = { stage: "email", email: "", matches: [], checking: false,
+    leadId: null, known: null,
+    fields: { name: "", company: "", title: "", phone: "", segment: "PSP" },
+    confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "" };
+  drawAddPerson();
+}
+
+const SEGMENTS = ["PSP", "Travel", "Marketplace", "BNPL", "Payroll", "Stablecoin", "Treasury", "Other"];
+
+function drawAddPerson() {
+  const a = S.ap; if (!a) return;
+  const step = n => `<span class="pill ${a.stage === n ? "blue" : ""}">${n}</span>`;
+
+  let body = "";
+
+  /* ── 1. the work email, and nothing else yet ─────────────────────── */
+  if (a.stage === "email") {
+    body = `
+      <div>
+        <h4>Work email</h4>
+        <p class="tiny muted" style="margin:-4px 0 12px">One field. It gets searched against everyone
+          the team has ever met before you type anything else.</p>
+        <div class="row" style="flex-wrap:nowrap">
+          <input class="inp" id="ap_email" type="email" placeholder="name@company.com"
+            value="${esc(a.email)}" onkeydown="if(event.key==='Enter')checkEmail()">
+          <button class="btn" onclick="checkEmail()" ${a.checking ? "disabled" : ""}>
+            ${a.checking ? `<span class="spin"></span> Searching` : "Check"}</button>
+        </div>
+        <button class="chip" style="margin-top:10px" onclick="S.ap.email='';S.ap.stage='form';drawAddPerson()">
+          No email, skip</button>
+      </div>`;
+  }
+
+  /* ── 2. we found someone. ask the one question that matters ──────── */
+  if (a.stage === "matched") {
+    body = `
+      <div class="alert"><b>We have met someone with this email.</b>
+        Confirm it is the same person before this gets logged against their history.</div>
+      ${a.matches.map(m => {
+        const lead = m.lead;
+        // allEncounters() is the mapped list, it carries confName. The raw
+        // ENCOUNTERS array does not, which is how the conference name went missing.
+        const hist = allEncounters().filter(e => e.leadId === lead.id)
+          .sort((x, y) => x.at.localeCompare(y.at));
+        return `<div class="card pad">
+          <div class="spread" style="margin-bottom:8px">
+            <div><b>${esc(lead.full_name)}</b>
+              <div class="tiny dim">${esc(lead.title || "")}${lead.title ? " · " : ""}${esc(lead.company || "")}</div>
+              <div class="tiny dim">${esc(lead.work_email || "no email on file")}</div></div>
+            <span class="pill ${m.confidence >= 90 ? "blue" : "warn"}">${m.confidence}% · ${esc(m.reason)}</span>
+          </div>
+          ${hist.length ? `<h4 style="margin-top:12px">Met ${hist.length} time${hist.length > 1 ? "s" : ""}</h4>
+            ${hist.map(e => `<div class="tiny" style="padding:5px 0;border-top:1px solid var(--line-soft)">
+              <div class="spread"><b>${esc(e.confName)}</b><span class="sig ${e.intent}">${e.intent}</span></div>
+              <div class="dim">${e.at.slice(0, 10)} · logged by ${esc(e.rep)} · as ${esc(e.name)} at ${esc(e.company)}</div>
+              <div class="muted" style="margin-top:2px">"${esc(e.note)}"</div></div>`).join("")}`
+            : `<div class="tiny dim">No encounters logged yet.</div>`}
+          <div class="row" style="margin-top:12px">
+            <button class="btn" onclick="sameAs('${lead.id}')">Yes, same person</button>
+            <button class="btn ghost" onclick="S.ap.stage='form';S.ap.leadId=null;drawAddPerson()">No, someone new</button>
+          </div>
+        </div>`; }).join("")}`;
+  }
+
+  /* ── 3. a genuinely new person ───────────────────────────────────── */
+  if (a.stage === "form") {
+    const f = (k, label, ph = "") =>
+      `<label>${label}</label><input class="inp" placeholder="${ph}" value="${esc(a.fields[k])}"
+        oninput="S.ap.fields['${k}']=this.value">`;
+    body = `
+      <div class="alert good"><b>No match.</b> New person, tell us who they are.</div>
+      <div class="kv">
+        ${f("name", "Name")}
+        ${f("company", "Company")}
+        ${f("title", "Job title")}
+        ${f("phone", "Phone", "optional")}
+        <label>Segment</label>
+        <select class="inp" onchange="S.ap.fields.segment=this.value">
+          ${SEGMENTS.map(s => `<option${a.fields.segment === s ? " selected" : ""}>${s}</option>`).join("")}
+        </select>
+        <label>Email</label>
+        <input class="inp" value="${esc(a.email)}" oninput="S.ap.email=this.value">
+      </div>
+      <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()"
+        ${!a.fields.name ? "disabled" : ""}>Next, where did you meet?</button>`;
+  }
+
+  /* ── 4. the encounter itself ─────────────────────────────────────── */
+  if (a.stage === "encounter") {
+    const who = a.known ? a.known.full_name : a.fields.name;
+    const opts = CONFERENCES.filter(c => c.end >= "2026-01-01")
+      .sort((x, y) => y.start.localeCompare(x.start));
+    body = `
+      <div class="alert good"><b>${esc(who)}</b>, logging a new encounter${a.known ? " against their existing history" : ""}.</div>
+      <div class="kv">
+        <label>Conference</label>
+        <select class="inp" onchange="S.ap.confId=this.value">
+          ${opts.map(c => `<option value="${c.id}"${a.confId === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}, ${fmtDate(c.start)}</option>`).join("")}
+        </select>
+        <label>Signal</label>
+        <select class="inp" onchange="S.ap.intent=this.value">
+          ${["cold", "warm", "hot"].map(i => `<option${a.intent === i ? " selected" : ""}>${i}</option>`).join("")}
+        </select>
+        <label>Note</label>
+        <textarea class="inp" style="min-height:84px" placeholder="What did they actually say?"
+          oninput="S.ap.note=this.value">${esc(a.note)}</textarea>
+      </div>
+      <div class="tiny dim">hot = asked about price, timeline or next steps · warm = asked a real question · cold = polite, took a leaflet</div>
+      <button class="btn" onclick="savePerson()">Save encounter</button>`;
+  }
+
+  drawer(`<div class="spread"><h3 style="margin:0">Add a person</h3>
+      <button class="x" onclick="S.ap=null;closeDrawer()">×</button></div>
+    <div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("form")}${step("encounter")}</div>`,
+    body);
+}
+
+async function checkEmail() {
+  const v = document.getElementById("ap_email").value.trim();
+  if (!v) return;
+  S.ap.email = v; S.ap.checking = true; drawAddPerson();
+  try {
+    const matches = await DB.findPossibleDuplicates({ email: v });
+    S.ap.checking = false;
+    S.ap.matches = matches;
+    // A search that finds nothing is an answer too, go straight to the form.
+    S.ap.stage = matches.length ? "matched" : "form";
+    drawAddPerson();
+  } catch (e) { S.ap.checking = false; drawAddPerson(); toast("Search failed: " + e.message, true); }
+}
+
+function sameAs(leadId) {
+  S.ap.leadId = leadId;
+  S.ap.known = (S.ap.matches.find(m => m.lead.id === leadId) || {}).lead;
+  S.ap.stage = "encounter";
+  drawAddPerson();
+}
+
+async function savePerson() {
+  const a = S.ap;
+  const conf = confById(a.confId);
+  try {
+    let leadId = a.leadId;
+    if (!leadId) {
+      const lead = await DB.upsertLead({
+        full_name: a.fields.name, work_email: a.email || null,
+        company: a.fields.company || null, title: a.fields.title || null,
+        phone: a.fields.phone || null, icp_segment: a.fields.segment,
+      });
+      leadId = lead.id;
+    }
+    await DB.addEncounter({
+      lead_id: leadId, conference_id: conf.id, rep: REP_NAME(),
+      met_at: new Date().toISOString(), intent: a.intent,
+      note: a.note, raw_note: a.note,
+      name_as_given: a.known ? a.known.full_name : a.fields.name,
+      company_as_given: a.known ? a.known.company : a.fields.company,
+      title_as_given: a.known ? a.known.title : a.fields.title,
+      email_as_given: a.email || null,
+    });
+    const wasKnown = !!a.leadId;
+    S.ap = null; closeDrawer(); await reload();
+    const { contacts } = identities();
+    const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
+    toast(wasKnown && c
+      ? `Logged. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
+      : "Saved.");
+    if (wasKnown) { S.view = "contacts"; render(); }
+  } catch (e) { toast("Save failed: " + e.message, true); }
+}

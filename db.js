@@ -3,12 +3,12 @@
 
    One job: talk to Postgres and hand the rest of the app objects in the shape
    it already understands. Postgres uses snake_case, the engine uses camelCase,
-   and that translation lives here and nowhere else — so the scoring code never
+   and that translation lives here and nowhere else, so the scoring code never
    has to know where its data came from.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* Created lazily. If the CDN that serves supabase-js is blocked or slow, this
-   file must still define DB — otherwise a network hiccup takes the whole app
+   file must still define DB, otherwise a network hiccup takes the whole app
    down at parse time instead of showing a useful message. */
 const sb = (window.supabase && window.supabase.createClient)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
