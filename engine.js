@@ -20,22 +20,70 @@ const TRAVEL_FROM_TLV = {
    person festival does not automatically beat a 1,800 person one. */
 const MEETINGS_PER_DAY = 20;
 
+/* Sales shorthand for the regions, for display only. The stored value stays
+   as it is, because travel cost and trip clustering both key off the full six
+   and EMEA cannot have one flight price: Dubai is 900 from Tel Aviv, Europe
+   1200, Africa 1800. Merging them would also suggest London and Dubai as one
+   trip, which nobody flying out of Tel Aviv would book. */
+const REGION_SHORT = {
+  "Europe": "EUR", "Middle East": "ME", "Africa": "AFR",
+  "Asia-Pacific": "APAC", "North America": "NA", "South America": "LATAM",
+};
+const rshort = r => REGION_SHORT[r] || r;
+
+/* Four criteria, and ICP fit is worth double any other one.
+
+   Cross-border relevance used to be a fifth criterion. It was dropped because
+   it measures nearly the same thing as ICP fit from the agenda side, and it
+   was rewarding events whose programme talks about cross-border payments but
+   whose room is thin on companies that actually move money across currencies.
+   Sibos and ITB Berlin were the clearest cases. The room is what a rep can
+   work; the agenda is not. */
 const DEFAULT_WEIGHTS = {
-  icpDensity: 30,   // is the room full of our buyers?
-  seniority: 20,    // is the decision-maker personally there?
-  crossBorder: 20,  // is the agenda actually about our problem?
-  efficiency: 20,   // what does a qualified conversation cost us?
-  strategic: 10,    // are the platforms who could EMBED us in the room?
+  icpDensity: 40,   // what share of the room moves money across currencies?
+  seniority: 20,    // can the people there actually say yes?
+  efficiency: 20,   // what does one qualified conversation cost us?
+  strategic: 20,    // partners who could embed us, and markets we want to open
 };
 
-/* No real conference scores 100 across all five dimensions, and none scores 0.
-   A raw weighted average therefore bunches everything between 15 and 75, which
-   makes the tiers useless to look at. We stretch that real-world band onto
-   0-100 with two stated anchors, so the number a rep sees is comparative:
-     raw 14 = an event with no relevance to us whatsoever
+/* Plain-language definition of each weight, used by the Settings panel.
+   Kept here rather than in the UI so the number and its meaning cannot
+   drift apart. */
+const WEIGHT_INFO = {
+  icpDensity: {
+    label: "ICP fit",
+    short: "Is the room full of our buyers?",
+    long: "The share of attendees that are marketplaces, PSPs, travel and e-commerce platforms, BNPL, stablecoin or payroll companies. What matters is whether they move money across currencies, not what the event calls itself. This is why a travel-tech summit can beat a payments expo.",
+    source: "Estimated from the exhibitor list and audience breakdown.",
+  },
+  seniority: {
+    label: "Seniority",
+    short: "Can they say yes?",
+    long: "Whether companies send people who own the FX line or people who report to them. A small senior room beats a large junior one.",
+    source: "Organisers publish this to sell sponsorships.",
+  },
+  efficiency: {
+    label: "Cost per conversation",
+    short: "What does a useful conversation cost?",
+    long: "Ticket plus flight and hotel from Tel Aviv, divided by the buyers one rep can realistically reach. Capped at 20 conversations a day, so a 40,000-person expo does not win on size alone.",
+    source: "Calculated, not estimated. The only one.",
+  },
+  strategic: {
+    label: "Strategic reach",
+    short: "Partners, and markets we want to open",
+    long: "Two things that both pay off later than a deal does. Are the platforms that could ship Grain to their own customer base in the room, the ones who would embed us rather than buy from us. And does this event open a market Grain is trying to enter this year. A mediocre event in a corridor we are pushing into can be worth more than a good one where we are already known.",
+    source: "Partners come off the exhibitor list. The market priority is a decision the company makes, not a fact about the event.",
+  },
+};
+
+/* No real conference scores 100 on all four, and none scores 0. A raw weighted
+   average bunches everything between about 16 and 78, which makes the tiers
+   useless to look at. We stretch that real band onto 0-100 with two stated
+   anchors, so the number a rep sees is comparative:
+     raw 12 = an event with no relevance to us whatsoever
      raw 80 = the realistic best case for Grain's ICP
    Nothing about the RANKING changes, this is presentation, not weighting. */
-const RAW_FLOOR = 14, RAW_CEIL = 80;
+const RAW_FLOOR = 12, RAW_CEIL = 80;
 const stretch = raw => clamp((raw - RAW_FLOOR) / (RAW_CEIL - RAW_FLOOR) * 100);
 
 const TIERS = [
@@ -63,12 +111,24 @@ function efficiencyScore(c) {
 
 const clamp = (n, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(n)));
 
+/* An event can arrive without estimates: the signal miner reads a Slack thread,
+   finds a conference name, and inserts it. Nobody has assessed it yet. Scoring
+   it anyway would produce a confident-looking number built on nothing, so it is
+   not scored at all until someone fills the estimates in. */
+const ESTIMATE_FIELDS = ["icpDensity", "seniority", "strategic"];
+const isUnscored = c => !c || c.audienceSize == null
+  || ESTIMATE_FIELDS.some(k => c[k] == null || c[k] === "");
+
 function scoreConference(c, weights = DEFAULT_WEIGHTS) {
+  if (isUnscored(c)) {
+    return { unscored: true, total: null, raw: null, parts: null, eff: null,
+      tier: "?", label: "Not scored", min: -1,
+      action: "Nobody has assessed this one yet. Add the estimates and it ranks with the rest." };
+  }
   const eff = efficiencyScore(c);
   const parts = {
     icpDensity: c.icpDensity,
     seniority: c.seniority,
-    crossBorder: c.crossBorder,
     efficiency: eff.score,
     strategic: c.strategic,
   };
@@ -125,15 +185,78 @@ function findClusters(confs, { maxGap = 10, maxSpan = 18, minTier = 45 } = {}, w
       const savedTravel = TRAVEL_FROM_TLV[cl.region] * (cl.items.length - 1);
       const bestScore = Math.max(...cl.scores.map(s => s.total));
       const avgScore = Math.round(cl.scores.reduce((a, s) => a + s.total, 0) / cl.scores.length);
+      const cities = [...new Set(cl.items.map(i => i.city))];
       return {
-        ...cl, savedTravel, bestScore, avgScore,
-        cities: [...new Set(cl.items.map(i => i.city))],
+        ...cl, savedTravel, bestScore, avgScore, cities,
+        // The title is the distinct cities in date order. Capped at two so a
+        // four-city trip does not run off the card, and falling back to the
+        // region when every event is in the same city, because "Dubai" on its
+        // own does not read as a trip.
+        title: cities.length === 1
+          ? `${cities[0]}, ${cl.items.length} events`
+          : cities.slice(0, 2).join(" then ") + (cities.length > 2 ? ` +${cities.length - 2} more` : ""),
         span: Math.round((new Date(cl.end) - new Date(cl.start)) / 86400000) + 1,
         // A trip is worth taking if it saves money AND the events are good.
         value: Math.round(savedTravel / 100 * (avgScore / 50)),
       };
     })
     .sort((a, b) => b.value - a.value);
+}
+
+/* ── GAPS ──────────────────────────────────────────────────────────────
+   Two different things a planner calls a gap, and they need different
+   answers, so they are computed separately.
+
+   A COVERAGE gap is a region with events worth attending where nothing is
+   booked. The fix is to book one.
+
+   A CALENDAR gap is a run of months with nothing booked at all. The fix is
+   usually different: pipeline goes quiet about a quarter after the team
+   stops meeting people, so a three-month hole in spring is a revenue hole
+   in summer. It is only reported when there was something bookable in
+   those months, otherwise it is not a gap, it is just a quiet season.   */
+function findGaps(confs, attending, weights, { minTier = 65, minEvents = 2, minMonths = 2 } = {}) {
+  const scored = confs.map(c => ({ c, s: scoreConference(c, weights) }));
+  const worthy = scored.filter(x => x.s.total >= minTier);
+
+  const byRegion = {};
+  worthy.forEach(({ c, s }) => {
+    const r = byRegion[c.region] = byRegion[c.region] || { region: c.region, events: [], booked: 0 };
+    r.events.push({ c, s });
+    if (attending.has(c.id)) r.booked++;
+  });
+  const coverage = Object.values(byRegion)
+    .filter(r => r.events.length >= minEvents && r.booked === 0)
+    .map(r => ({ ...r, best: r.events.slice().sort((a, b) => b.s.total - a.s.total)[0] }))
+    .sort((a, b) => b.best.s.total - a.best.s.total);
+
+  /* Calendar gaps. Walk every month from the first to the last event. */
+  const months = [];
+  const ym = d => d.slice(0, 7);
+  const all = scored.slice().sort((a, b) => a.c.start.localeCompare(b.c.start));
+  if (!all.length) return { coverage, calendar: [] };
+  let cur = new Date(all[0].c.start.slice(0, 7) + "-01");
+  const last = new Date(all[all.length - 1].c.start.slice(0, 7) + "-01");
+  while (cur <= last) {
+    const key = cur.toISOString().slice(0, 7);
+    months.push({ key,
+      booked: all.some(x => attending.has(x.c.id) && ym(x.c.start) === key),
+      bookable: all.filter(x => ym(x.c.start) === key && x.s.total >= minTier) });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  const calendar = [];
+  let run = [];
+  const flush = () => {
+    const withOptions = run.filter(m => m.bookable.length);
+    if (run.length >= minMonths && withOptions.length)
+      calendar.push({ from: run[0].key, to: run[run.length - 1].key, months: run.length,
+        missed: withOptions.flatMap(m => m.bookable).sort((a, b) => b.s.total - a.s.total).slice(0, 3) });
+    run = [];
+  };
+  months.forEach(m => { if (m.booked) flush(); else run.push(m); });
+  flush();
+
+  return { coverage, calendar };
 }
 
 function findConflicts(confs, weights, minTier = 65) {
@@ -310,6 +433,8 @@ function resolveIdentities(encounters, decisions = {}) {
       companies: [...new Set(list.map(e => e.company))],
       title: latest.title,
       email: latest.email || list.map(e => e.email).filter(Boolean).pop() || "",
+      // The segment lives on the lead row, so take the last one that had it.
+      segment: list.map(e => e.segment).filter(Boolean).pop() || "",
       encounters: list,
       ...arcSignals(list),
     };

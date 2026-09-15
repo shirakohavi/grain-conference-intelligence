@@ -130,9 +130,9 @@ const DEMO = {
   interpret(c, s) {
     const go = s.tier === "A" ? "go" : s.tier === "B" ? "go" : s.tier === "C" ? "go if clustered" : "skip";
     const weakLabel = { icpDensity:"the room is not dense enough in our buyers", seniority:"the decision-makers send juniors",
-      crossBorder:"the agenda is mostly domestic", efficiency:"the cost per useful conversation is high",
+      efficiency:"the cost per useful conversation is high",
       strategic:"the platforms who could embed us are not here" }[s.weakest];
-    const strongLabel = { icpDensity:"buyer density", seniority:"seniority in the room", crossBorder:"cross-border relevance",
+    const strongLabel = { icpDensity:"buyer density", seniority:"seniority in the room",
       efficiency:"cost per qualified conversation", strategic:"embedded-partner presence" }[s.strongest];
     return {
       __demo:true, verdict:go,

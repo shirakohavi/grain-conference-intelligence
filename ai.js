@@ -186,7 +186,7 @@ Verticals: ${c.verticals.join(", ")} | Attendance ~${c.audienceSize} | Ticket �
 Our internal note: ${c.note}
 
 Computed score ${s.total}/100 (tier ${s.tier}, ${s.label}). Components, each 0-100:
-  ICP density ${s.parts.icpDensity} · decision-maker seniority ${s.parts.seniority} · cross-border relevance ${s.parts.crossBorder} · cost efficiency ${s.parts.efficiency} · embedded-partner presence ${s.parts.strategic}
+  ICP fit ${s.parts.icpDensity} · seniority ${s.parts.seniority} · cost per conversation ${s.parts.efficiency} · strategic value ${s.parts.strategic}
 Cost per reachable ICP contact: €${Math.round(s.eff.costPerContact)} (${s.eff.reachable} reachable over ${s.eff.days} days, incl. €${s.eff.travel} travel from Tel Aviv)
 
 Return JSON:

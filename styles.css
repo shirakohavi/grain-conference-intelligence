@@ -351,3 +351,141 @@ th:first-child,td:first-child{min-width:220px}
 .stat.warn b{color:#8A6516}
 .stat.good{background:#E9F0FE;border-color:#CBDCFB}
 .stat.good b{color:#12509C}
+
+/* ══════════════════════════════════════════════════════════════════
+   Rebuild layer: dropdown filters, unscored events, weight explainers,
+   sortable contact table. Grain palette only, no new colours.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Filters are all selects now, so give them a real control shape. */
+.filter-bar select.filter-control{
+  border:1px solid var(--line);border-radius:7px;padding:6px 26px 6px 10px;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238D92B1' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center;
+  appearance:none;-webkit-appearance:none;color:var(--ink2);max-width:190px}
+.filter-bar select.filter-control:hover{border-color:var(--accent);color:var(--ink)}
+.filter-bar select.filter-control:focus{outline:0;border-color:var(--accent)}
+
+/* An event nobody has scored yet. Amber, not red: it is unfinished, not broken. */
+.tier.Q{background:#fff;color:#9a6b1f;border:1.5px dashed #e0b76a}
+tr.needs{background:#fffaf0}
+tr.needs:hover{background:#fef5e4}
+tr.needs td:first-child{box-shadow:inset 3px 0 0 #e0b76a}
+.cal-bar.tQ{background:repeating-linear-gradient(45deg,#f7e8c9,#f7e8c9 5px,#fdf4e4 5px,#fdf4e4 10px);color:#9a6b1f}
+
+.needbar{display:flex;align-items:center;gap:9px;width:100%;margin:-12px 0 18px;
+  padding:10px 13px;border:1px solid #e8d5a8;background:#fefcf6;border-radius:var(--r);
+  font:inherit;font-size:13px;color:#8a6420;cursor:pointer;text-align:left}
+.needbar:hover{background:#fdf7ea}
+.needdot{width:7px;height:7px;border-radius:50%;background:#e0b76a;flex:none}
+
+/* Weight rows: name, one-line meaning, slider, and a click-to-open explainer. */
+.wrow{padding:10px 0;border-top:1px solid var(--line)}
+.wrow:first-of-type{border-top:0}
+.wrow input[type=range]{width:100%;accent-color:var(--accent);margin-top:6px}
+.wname{border:0;background:0;padding:0;font:inherit;font-size:12.5px;font-weight:600;
+  color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.wname:hover{color:var(--accent)}
+.winfo{width:14px;height:14px;border-radius:50%;border:1px solid var(--line);
+  display:inline-grid;place-items:center;font-size:9px;font-weight:700;color:var(--muted)}
+.wrow.open .winfo{background:var(--accent);border-color:var(--accent);color:#fff}
+.wexp{margin-top:7px;padding:9px 11px;background:var(--bg);border-radius:8px}
+.wexp p{margin:0 0 5px;font-size:12px;line-height:1.6;color:var(--ink2)}
+
+/* Sortable headers on the contacts table. */
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--accent)}
+th.sorted{color:var(--accent)}
+
+/* Status dropdown inside a calendar row label. */
+.calstatus{margin-left:auto;font-size:11px;padding:2px 6px}
+.cal-label .cal-name{cursor:pointer}
+.cal-label .cal-name:hover{color:var(--accent)}
+
+/* Weights as one strip above the table, so the table gets the full width. */
+.wstrip-head{margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.wgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.wgrid > .wrow{padding:0;border-top:0}
+.wgrid .wexp{margin-top:0}
+.wstrip .wexp{margin-top:14px}
+.wstrip .wexp b{font-size:12.5px;display:block;margin-bottom:3px}
+@media(max-width:900px){.wgrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.wgrid{grid-template-columns:1fr}}
+
+/* A text button that reads as a link, used to cross between records. */
+.linkbtn{border:0;background:0;padding:0;font:inherit;font-size:13px;font-weight:650;
+  color:var(--accent);cursor:pointer;text-align:left}
+.linkbtn:hover{text-decoration:underline}
+
+/* The note a rep actually wrote, given room to be read. */
+.mnote{margin-top:7px;padding:9px 11px;background:var(--bg);border-radius:8px;
+  font-size:12.5px;line-height:1.65;color:var(--ink2)}
+
+/* Calendar: a year band above the months, so a plan spanning two years reads. */
+.cal-year{position:absolute;top:0;font-size:11px;font-weight:700;letter-spacing:.08em;
+  color:var(--muted);border-left:1px solid var(--line);padding-left:7px;white-space:nowrap}
+.cal-bar.clust{outline:1.5px dotted var(--accent);outline-offset:1px}
+.k.clust{outline:1.5px dotted var(--accent);outline-offset:1px;background:transparent}
+
+/* Cluster and gap boxes under the calendar. */
+.boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.box{align-self:start}
+.box.gap{border-color:#e8d5a8;background:#fefcf6}
+.boxrow{display:flex;align-items:center;gap:8px;width:100%;padding:6px 0;border:0;background:0;
+  border-top:1px solid var(--line);font:inherit;font-size:12.5px;color:var(--ink);
+  cursor:pointer;text-align:left}
+.boxrow:hover .boxname{color:var(--accent)}
+.boxname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Lead status, the tool's own pipeline. Ends at the HubSpot handoff. */
+.status.ls-New{background:#F1F3F9;color:#7A84A6}
+.status.ls-Contacted{background:#E3EDFD;color:#12509C}
+.status.ls-Qualified{background:#E4F4EC;color:#1D7A52}
+.status.ls-Notafit{background:#F5F0F0;color:#96605A}
+
+/* The plain relationship summary at the top of a contact. */
+.summary{background:var(--accent-soft);border-radius:var(--r);padding:14px 16px;
+  font-size:13.5px;line-height:1.75;color:var(--ink)}
+
+/* Conferences as tags in the Where column. */
+.pill.conftag{border:0;font:inherit;font-size:11px;font-weight:600;cursor:pointer;
+  background:var(--line2);color:var(--ink2);max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.pill.conftag:hover{background:var(--accent-soft);color:var(--accent-ink)}
+
+/* The rule that produced a set of boxes, stated beside them. */
+.rule{font-size:11.5px;color:var(--muted);text-align:right;max-width:52ch;line-height:1.5}
+
+/* Single-month view: a day axis instead of a month axis. */
+.cal-day{position:absolute;top:0;font-size:9.5px;color:var(--muted);text-align:center;
+  border-left:1px solid var(--line-soft);overflow:hidden}
+
+/* Bigger calendar. Taller rows and thicker bars, so the timeline is the thing
+   on the page rather than a strip above the boxes. */
+.cal-row{height:44px}
+.cal-bar{top:9px;height:26px;min-width:30px;font-size:11.5px}
+.cal-body{max-height:none}
+.cal-label{width:290px}
+.cal-name{font-size:13.5px}
+.cal-head{height:26px}
+.cal-month span{font-size:11.5px}
+.cal-day{font-size:10.5px;padding-top:2px}
+@media(max-width:980px){.cal-label{width:170px}}
+
+/* Contacts: the email is reference, not headline. One line for the date. */
+td.email{font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace);
+  font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nowrap{white-space:nowrap}
+
+/* A long conference name must not widen its column. Truncate, full name on hover. */
+.pill.conftag{max-width:136px;display:inline-block;vertical-align:bottom}
+
+/* Declared column widths win, so one long name cannot push the table wider
+   than its card. Anything too long truncates instead. */
+table.fixed{table-layout:fixed;width:100%}
+table.fixed td{overflow:hidden;text-overflow:ellipsis}
+table.fixed td .cell-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.fixed .status{max-width:100%}
+
+/* Auto push: a real button, greyed, because pressing it is optional. */
+.btn.auto{background:var(--line2);color:var(--muted);border:1px solid var(--line);font-weight:600;white-space:nowrap}
+.btn.auto:hover{background:var(--line);color:var(--ink2)}

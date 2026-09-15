@@ -132,6 +132,12 @@ const DB = (() => {
     return Object.values(byId);
   }
 
+  async function updateConference(id, fields) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const { error } = await sb.from("conferences").update(fields).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   async function upsertLead(fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { data, error } = await sb.from("leads").insert(fields).select().single();
@@ -193,5 +199,5 @@ const DB = (() => {
   }
 
   return { sb, loadAll, findPossibleDuplicates, searchCandidates, upsertLead, addEncounter,
-           setConferenceStatus, addConference, updateLead, addSignal, markSignalProcessed, onChange };
+           setConferenceStatus, updateConference, addConference, updateLead, addSignal, markSignalProcessed, onChange };
 })();
