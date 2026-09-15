@@ -1,55 +1,62 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   STAND KIOSK
+   FIELD MODE
 
-   A rep sets the event and a PIN, then hands the tablet across the stand.
-   From that point the page shows nothing but a form: no contact list, no
-   scores, no navigation, no way back into the tool without the PIN.
+   One form, two screens, and a deliberate pause between them.
 
-   One decision worth calling out. If the email already belongs to someone we
-   have met, the prospect is told nothing. They get the same thank-you as
-   everyone else and the encounter is quietly attached to their existing
-   record. Telling a stranger "we have you on file from Money20/20" leaks our
-   pipeline to them and is faintly unsettling besides. The rep sees the merge
-   later, which is the only place that information is useful.
+   Screen one is three boxes: work email, name, company. Either the rep or the
+   person in front of them fills it in. There is nothing else on the page.
+
+   Continue is the handback. Whoever filled the boxes in stops there and the
+   rep takes the tablet, because screen two is where we say what we already
+   know about this person.
+
+   Everything is written the moment Continue is pressed: the lead, and the meeting.
+   A rep who gets pulled into the next conversation and never types a note
+   still keeps the lead. The note then autosaves as they type, so the only
+   button on screen two is the one that clears it for the next person.
    ══════════════════════════════════════════════════════════════════════════ */
 
 const K = {
-  stage: localStorage.getItem("kiosk_event") ? "form" : "setup",
-  eventId: localStorage.getItem("kiosk_event") || "",
-  rep: localStorage.getItem("kiosk_rep") || "",
-  pin: localStorage.getItem("kiosk_pin") || "",
+  stage: localStorage.getItem("fm_event") ? "form" : "setup",
+  eventId: localStorage.getItem("fm_event") || "",
+  rep: localStorage.getItem("fm_rep") || "",
   conferences: [],
-  f: { email: "", name: "", company: "", segment: "" },
-  busy: false, err: "",
+  f: { email: "", name: "", company: "" },
+  lead: null, encounterId: null, history: [], maybe: [],
+  note: { text: "", intent: "warm", segment: "" },
+  busy: false, err: "", saved: "",
 };
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const el = () => document.getElementById("app");
+const dmy = iso => { const d = new Date(iso), p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`; };
 
-/* Tap targets instead of a dropdown: faster standing up, and it gives us the
-   ICP segment without asking anyone to describe themselves as a segment. */
-const SEGMENTS = [
-  ["Marketplace", "We pay sellers in other currencies"],
-  ["PSP", "We process payments across borders"],
-  ["Travel", "We book or sell travel"],
-  ["Payroll", "We pay people in other countries"],
-  ["BNPL", "We collect repayments later"],
-  ["Other", "Something else"],
+const SEGMENTS = ["Marketplace", "PSP", "Travel", "Payroll", "BNPL", "Stablecoin", "Other"];
+/* The chip is the value, written as something a rep can check against their
+   own note rather than something they have to feel. "Real question" is a
+   judgement two reps will disagree about, and this field decides whether
+   HubSpot gets the lead on its own, so it has to be a test.
+   The colours are the same red, amber and grey that HOT, WARM and COLD wear
+   everywhere else, so the mapping is learned without being explained. */
+const INTENTS = [
+  ["hot",  "Named a budget or a date"],
+  ["warm", "Told us their FX problem"],
+  ["cold", "No problem named"],
 ];
 
 const brand = `<div class="k-brand">
   <img src="logo.png" alt="">
-  <div><b>Grain</b><span>Embedded cross-currency</span></div>
+  <div><b>Grain</b><span>Field mode</span></div>
 </div>`;
 
 function render() {
-  if (K.stage === "setup")  return renderSetup();
-  if (K.stage === "done")   return renderDone();
-  if (K.stage === "unlock") return renderUnlock();
+  if (K.stage === "setup") return renderSetup();
+  if (K.stage === "card")  return renderCard();
   renderForm();
 }
 
-/* ── Rep-facing setup. Runs once, before the tablet leaves their hands. ── */
+/* ── Setup. Once, then remembered. ──────────────────────────────────────── */
 async function renderSetup() {
   if (!K.conferences.length) {
     el().innerHTML = `<div class="k-wrap"><div class="k-card">${brand}<p class="lede">Loading events…</p></div></div>`;
@@ -70,167 +77,275 @@ async function renderSetup() {
   }
   el().innerHTML = `<div class="k-wrap"><div class="k-card k-setup">
     ${brand}
-    <h1>Set up the stand</h1>
-    <p class="lede">Do this before you hand the tablet over. After that the screen shows only the form.</p>
-    <div class="k-field"><label>Which event</label>
+    <h1>Field mode</h1>
+    <div class="k-field"><label>Event</label>
       <select onchange="K.eventId=this.value">
         ${K.conferences.map(c => `<option value="${c.id}"${K.eventId === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}</option>`).join("")}
       </select></div>
     <div class="k-field"><label>Your name</label>
-      <input value="${esc(K.rep)}" placeholder="who is on the stand" oninput="K.rep=this.value"></div>
-    <div class="k-field"><label>Four-digit PIN to get back out</label>
-      <input inputmode="numeric" maxlength="4" value="${esc(K.pin)}" placeholder="0000" oninput="K.pin=this.value.replace(/\\D/g,'')"></div>
-    <button class="k-go" onclick="startKiosk()">Start</button>
-    <div class="k-note"><b>To get out later:</b> tap the top-left corner of the screen five times and enter the PIN.
-      There is no visible way back, which is the point.</div>
+      <input value="${esc(K.rep)}" placeholder="who is logging" oninput="K.rep=this.value"></div>
+    <button class="k-go" onclick="start()">Start</button>
   </div></div>`;
 }
 
-function startKiosk() {
-  if (!K.eventId || K.pin.length !== 4) { alert("Pick an event and set a four-digit PIN."); return; }
-  localStorage.setItem("kiosk_event", K.eventId);
-  localStorage.setItem("kiosk_rep", K.rep || "Stand");
-  localStorage.setItem("kiosk_pin", K.pin);
+function start() {
+  if (!K.eventId) { alert("Pick an event."); return; }
+  localStorage.setItem("fm_event", K.eventId);
+  localStorage.setItem("fm_rep", K.rep || "Stand");
   K.stage = "form"; render();
   document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
-/* ── What the prospect sees. Nothing else exists on this screen. ───────── */
+/* ══════════════════════════════════════════════════════════════════════
+   SCREEN ONE. A title and three boxes.
+   ══════════════════════════════════════════════════════════════════════ */
 function renderForm() {
   const conf = K.conferences.find(c => c.id === K.eventId);
-  const ready = /\S+@\S+\.\S+/.test(K.f.email);
   el().innerHTML = `
     <div class="k-exit" onclick="cornerTap()"></div>
     <div class="k-wrap"><div class="k-card">
       ${brand}
       <h1>Nice to meet you</h1>
-      <p class="lede">Leave your work email and we will send you something useful, not a newsletter.</p>
 
       <div class="k-field"><label>Work email</label>
         <input type="email" inputmode="email" autocapitalize="off" autocorrect="off"
           placeholder="you@company.com" value="${esc(K.f.email)}"
           oninput="K.f.email=this.value;refresh()"></div>
 
-      <div class="k-field"><label>Name <span class="k-optional">optional</span></label>
-        <input placeholder="" value="${esc(K.f.name)}" oninput="K.f.name=this.value"></div>
+      <div class="k-field"><label>Name</label>
+        <input value="${esc(K.f.name)}" oninput="K.f.name=this.value;refresh()"></div>
 
-      <div class="k-field"><label>Company <span class="k-optional">optional</span></label>
-        <input placeholder="" value="${esc(K.f.company)}" oninput="K.f.company=this.value"></div>
+      <div class="k-field"><label>Company</label>
+        <input value="${esc(K.f.company)}" oninput="K.f.company=this.value;refresh()"></div>
 
-      <div class="k-field"><label>Which sounds like you? <span class="k-optional">optional</span></label>
-        <div class="k-chips">
-          ${SEGMENTS.map(([k, label]) => `<button class="k-chip ${K.f.segment === k ? "on" : ""}"
-            onclick="K.f.segment = K.f.segment === '${k}' ? '' : '${k}'; refresh()">${label}</button>`).join("")}
-        </div></div>
+      ${K.err ? `<div class="k-note k-bad">${esc(K.err)}</div>` : ""}
 
-      ${K.err ? `<div class="k-note" style="background:#FCEEEC;color:#B03A2E">${esc(K.err)}</div>` : ""}
+      <button class="k-go" id="go" ${ready() ? "" : "disabled"} onclick="lookUp()">Continue</button>
 
-      <button class="k-go" ${ready && !K.busy ? "" : "disabled"} onclick="submitLead()">
-        ${K.busy ? "Saving…" : "Send it over"}</button>
-
-      <div class="k-foot">${conf ? esc(conf.name) : ""}<br>
-        We will only use this to follow up on what we talked about.</div>
+      <div class="k-foot">${conf ? esc(conf.name) : ""}</div>
     </div></div>`;
 }
 
-// Only the button state changes as they type, so don't rebuild the inputs and
-// lose their cursor.
+const ready = () => /\S+@\S+\.\S+/.test(K.f.email) && K.f.name.trim().length > 1;
+
+// Only the button state changes while they type, so don't rebuild the inputs
+// and throw away the cursor.
 function refresh() {
-  const ready = /\S+@\S+\.\S+/.test(K.f.email);
-  const btn = document.querySelector(".k-go");
-  if (btn) btn.disabled = !ready || K.busy;
-  document.querySelectorAll(".k-chip").forEach((b, i) =>
-    b.classList.toggle("on", SEGMENTS[i][0] === K.f.segment));
+  const b = document.getElementById("go");
+  if (b) b.disabled = !ready() || K.busy;
 }
 
-async function submitLead() {
-  K.busy = true; K.err = ""; refresh();
-  const email = K.f.email.trim().toLowerCase();
-  try {
-    // Does this person already exist? The prospect is never told either way.
-    const { data: found } = await DB.sb.from("leads").select("id").ilike("work_email", email).limit(1);
-    let leadId = found && found[0] && found[0].id;
+/* ══════════════════════════════════════════════════════════════════════
+   CONTINUE. Look them up, write the lead and the meeting, then show it.
+   ══════════════════════════════════════════════════════════════════════ */
+async function lookUp() {
+  K.busy = true; K.err = "";
+  el().innerHTML = `<div class="k-wrap"><div class="k-card">${brand}
+    <p class="lede">Checking who we already know…</p></div></div>`;
 
-    if (!leadId) {
-      const { data, error } = await DB.sb.from("leads").insert({
-        full_name: K.f.name.trim() || email.split("@")[0],
-        work_email: email,
-        company: K.f.company.trim() || null,
-        icp_segment: K.f.segment || null,
-      }).select().single();
-      if (error) throw error;
-      leadId = data.id;
+  const email = K.f.email.trim().toLowerCase();
+  const name = K.f.name.trim(), company = K.f.company.trim();
+  try {
+    if (!K.conferences.length) {
+      const { data: cs } = await DB.sb.from("conferences").select("id,name,city");
+      K.conferences = cs || [];
     }
 
-    const { error: e2 } = await DB.sb.from("encounters").insert({
-      lead_id: leadId, conference_id: K.eventId,
-      rep: localStorage.getItem("kiosk_rep") || "Stand",
+    /* 1. Exact email. The person typed it themselves, so this is the check
+          that matters. */
+    const { data: exact } = await DB.sb.from("leads").select("*").ilike("work_email", email).limit(1);
+    let lead = exact && exact[0];
+
+    /* 2. No exact hit. Someone who gave a different address last time is the
+          common case, so run the same matcher the Contacts page uses against
+          people with the same surname or company. It suggests, never merges. */
+    K.maybe = [];
+    if (!lead) {
+      const last = name.split(/\s+/).slice(-1)[0];
+      const pool = {};
+      if (last && last.length > 2) {
+        const { data } = await DB.sb.from("leads").select("*").ilike("full_name", "%" + last + "%").limit(20);
+        (data || []).forEach(r => pool[r.id] = r);
+      }
+      if (company.length > 2) {
+        const { data } = await DB.sb.from("leads").select("*").ilike("company", "%" + company + "%").limit(20);
+        (data || []).forEach(r => pool[r.id] = r);
+      }
+      K.maybe = Object.values(pool).map(l => {
+        const { score, reasons } = matchConfidence(
+          { name, company, title: "", email },
+          { name: l.full_name || "", company: l.company || "", title: l.title || "", email: l.work_email || "" });
+        return { lead: l, score, reasons };
+      }).filter(x => x.score >= 40).sort((a, b) => b.score - a.score).slice(0, 2);
+    }
+
+    /* 3. Write it now, before anyone types a note. */
+    if (!lead) {
+      const { data, error } = await DB.sb.from("leads").insert({
+        full_name: name || email.split("@")[0],
+        work_email: email,
+        company: company || null,
+      }).select().single();
+      if (error) throw error;
+      lead = data;
+    }
+    K.lead = lead;
+    K.note = { text: "", intent: "warm", segment: lead.icp_segment || "" };
+
+    const { data: encs } = await DB.sb.from("encounters")
+      .select("id,conference_id,rep,met_at,intent,note").eq("lead_id", lead.id).order("met_at");
+    K.history = encs || [];
+
+    const { data: created, error: e2 } = await DB.sb.from("encounters").insert({
+      lead_id: lead.id, conference_id: K.eventId,
+      rep: localStorage.getItem("fm_rep") || "Stand",
       met_at: new Date().toISOString(),
-      // Self-entered leads start warm: they walked up and typed their own
-      // email, which is more than a leaflet-taker does and less than a
-      // pricing question. A rep can correct it afterwards.
-      intent: "warm",
-      self_entered: true,
-      name_as_given: K.f.name.trim() || null,
-      company_as_given: K.f.company.trim() || null,
-      email_as_given: email,
-      note: "Filled in at the stand" + (K.f.segment ? ". Described themselves as: " + K.f.segment : "") + ".",
-      raw_note: "self-entered at the stand",
-    });
+      intent: "warm", self_entered: true,
+      name_as_given: name || null, company_as_given: company || null, email_as_given: email,
+      note: "", raw_note: "",
+    }).select().single();
     if (e2) throw e2;
-
-    K.stage = "done"; K.busy = false; render();
-    setTimeout(() => { K.f = { email: "", name: "", company: "", segment: "" }; K.stage = "form"; render(); }, 4000);
+    K.encounterId = created.id;
+    K.saved = "Saved";
   } catch (e) {
-    K.busy = false;
-    K.err = "That didn't save. Try again, or grab a card and we'll add it later.";
-    render();
+    K.err = "Couldn't save that. " + e.message;
+    K.busy = false; K.stage = "form"; render(); return;
   }
+  K.busy = false; K.stage = "card"; render();
 }
 
-function renderDone() {
-  el().innerHTML = `<div class="k-wrap"><div class="k-card"><div class="k-done">
-    <div class="k-tick"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-      stroke="#3D82F7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 12.5l5.5 5.5L20 7"/></svg></div>
-    <h1>Thanks</h1>
-    <p class="lede">We'll be in touch about what we talked about.</p>
-  </div></div></div>`;
+const confName = id => (K.conferences.find(c => c.id === id) || {}).name || id;
+
+/* ══════════════════════════════════════════════════════════════════════
+   SCREEN TWO. The contact, and a box to say what was said.
+   ══════════════════════════════════════════════════════════════════════ */
+function renderCard() {
+  const l = K.lead || {};
+  const known = K.history.length > 0;
+
+  el().innerHTML = `
+    <div class="k-exit" onclick="cornerTap()"></div>
+    <div class="k-wrap"><div class="k-card k-rep">
+      <div class="k-rephead">
+        <span class="k-tag ${known ? "known" : "new"}">${known ? "Met before" : "New contact"}</span>
+        <span class="k-saved" id="saved">${esc(K.saved)}</span>
+      </div>
+
+      <h1>${esc(l.full_name || K.f.name)}</h1>
+      <p class="lede">${esc(l.company || K.f.company)}${(l.company || K.f.company) && l.title ? " · " : ""}${esc(l.title || "")}<br>
+        <span class="k-mono">${esc(l.work_email || K.f.email)}</span></p>
+
+      ${K.maybe.length ? `<div class="k-maybe">
+        <div class="k-histhead">Might be someone we know</div>
+        ${K.maybe.map((m, i) => `<div class="k-maybrow">
+          <div><b>${esc(m.lead.full_name)}</b> <span class="k-histmeta">${esc(m.lead.company || "")} · ${esc(m.lead.work_email || "no email")}</span>
+            <div class="k-histmeta">${m.score}/100 · ${esc(m.reasons.join(", "))}</div></div>
+          <button class="k-mergebtn" onclick="mergeInto(${i})">Same person</button>
+        </div>`).join("")}
+      </div>` : ""}
+
+      ${known ? `<div class="k-hist">
+        <div class="k-histhead">Met ${K.history.length} time${K.history.length > 1 ? "s" : ""} before</div>
+        ${K.history.map(e => `<div class="k-histrow">
+          <div class="k-histtop"><b>${esc(confName(e.conference_id))}</b>
+            <span class="k-sig ${esc(e.intent)}">${esc(e.intent)}</span></div>
+          <div class="k-histmeta">${dmy(e.met_at)} · ${esc(e.rep)}</div>
+          ${e.note ? `<div class="k-histnote">${esc(e.note)}</div>` : ""}
+        </div>`).join("")}
+      </div>` : ""}
+
+      <div class="k-field"><label>What did they say?</label>
+        <textarea class="k-ta" id="note" placeholder="asked how we price the hedge on THB, said FX is eating their margin"
+          oninput="noteTyped(this.value)">${esc(K.note.text)}</textarea></div>
+
+      <div class="k-field"><label>Signal</label>
+        <div class="k-chips">
+          ${INTENTS.map(([v, lab]) => `<button class="k-chip sig-${v} ${K.note.intent === v ? "on" : ""}"
+            onclick="setIntent('${v}')">${lab}</button>`).join("")}
+        </div></div>
+
+      <div class="k-field"><label>Segment</label>
+        <div class="k-chips">
+          ${SEGMENTS.map(sg => `<button class="k-chip ${K.note.segment === sg ? "on" : ""}"
+            onclick="setSegment('${sg}')">${esc(sg)}</button>`).join("")}
+        </div></div>
+
+      ${K.err ? `<div class="k-note k-bad">${esc(K.err)}</div>` : ""}
+
+      <button class="k-go" onclick="nextPerson()">Next person</button>
+    </div></div>`;
 }
 
-/* ── Getting back out ─────────────────────────────────────────────────── */
+/* ── Autosave. No save button: the note is written as it is typed, so a rep
+      who walks away mid-sentence loses a sentence and not a lead. ─────── */
+let noteTimer;
+function noteTyped(v) {
+  K.note.text = v;
+  flag("Saving…");
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => saveNote(), 700);
+}
+function setIntent(v) { K.note.intent = v; render(); saveNote(); }
+function setSegment(sg) {
+  K.note.segment = K.note.segment === sg ? "" : sg;
+  render();
+  saveNote();
+  if (K.lead) DB.sb.from("leads").update({ icp_segment: K.note.segment || null }).eq("id", K.lead.id);
+}
+
+function flag(t) { K.saved = t; const e = document.getElementById("saved"); if (e) e.textContent = t; }
+
+async function saveNote() {
+  if (!K.encounterId) return;
+  try {
+    const { error } = await DB.sb.from("encounters").update({
+      note: K.note.text.trim(), raw_note: K.note.text.trim(), intent: K.note.intent,
+    }).eq("id", K.encounterId);
+    if (error) throw error;
+    flag("Saved");
+  } catch (e) { flag("Not saved"); }
+}
+
+/* ── The rep says it is the same person as an existing record. Move the
+      meeting we just wrote onto them and drop the duplicate lead. ─────── */
+async function mergeInto(i) {
+  const m = K.maybe[i]; if (!m || !K.encounterId) return;
+  const dupe = K.lead;
+  try {
+    await DB.sb.from("encounters").update({ lead_id: m.lead.id }).eq("id", K.encounterId);
+    if (dupe && dupe.id !== m.lead.id) await DB.sb.from("leads").delete().eq("id", dupe.id);
+    K.lead = m.lead; K.maybe = [];
+    const { data: encs } = await DB.sb.from("encounters")
+      .select("id,conference_id,rep,met_at,intent,note").eq("lead_id", m.lead.id)
+      .neq("id", K.encounterId).order("met_at");
+    K.history = encs || [];
+    K.saved = "Saved"; render();
+  } catch (e) { K.err = "Couldn't move that meeting across."; render(); }
+}
+
+function nextPerson() {
+  clearTimeout(noteTimer);
+  saveNote();
+  K.f = { email: "", name: "", company: "" };
+  K.note = { text: "", intent: "warm", segment: "" };
+  K.lead = null; K.encounterId = null; K.history = []; K.maybe = [];
+  K.err = ""; K.saved = ""; K.busy = false;
+  K.stage = "form"; render();
+}
+
+/* ── Getting out. Five taps in the top-left corner. ─────────────────────── */
 let taps = 0, tapTimer;
 function cornerTap() {
   taps++; clearTimeout(tapTimer);
   tapTimer = setTimeout(() => taps = 0, 1800);
-  if (taps >= 5) { taps = 0; K.stage = "unlock"; render(); }
+  if (taps >= 5) {
+    taps = 0;
+    localStorage.removeItem("fm_event");
+    document.exitFullscreen?.().catch(() => {});
+    location.href = "index.html";
+  }
 }
 
-function renderUnlock() {
-  el().innerHTML = `<div class="k-wrap"><div class="k-card">
-    ${brand}
-    <h1>PIN</h1>
-    <p class="lede">Enter the four digits you set when the stand opened.</p>
-    <div class="k-field">
-      <input inputmode="numeric" maxlength="4" autofocus placeholder="0000"
-        style="text-align:center;letter-spacing:.5em;font-size:26px"
-        oninput="if(this.value.length===4)tryUnlock(this.value)"></div>
-    <button class="k-go" style="background:#F1F3F9;color:#5C6590"
-      onclick="K.stage='form';render()">Back to the form</button>
-  </div></div>`;
-}
-
-function tryUnlock(v) {
-  if (v !== localStorage.getItem("kiosk_pin")) { alert("Wrong PIN."); return; }
-  localStorage.removeItem("kiosk_event");
-  document.exitFullscreen?.().catch(() => {});
-  location.href = "index.html";
-}
-
-/* Make the browser's own escape routes harder to hit by accident. */
-window.addEventListener("beforeunload", e => {
-  if (K.stage === "form" && localStorage.getItem("kiosk_event")) { e.preventDefault(); e.returnValue = ""; }
-});
 document.addEventListener("contextmenu", e => { if (K.stage === "form") e.preventDefault(); });
 
 render();

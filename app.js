@@ -111,7 +111,6 @@ const badge = r => r?.__demo
 const IC = {
   conferences: '<path d="M2 4h12M2 8h12M2 12h12"/>',
   plan:        '<rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/>',
-  field:       '<path d="M8 3v10M3 8h10"/><rect x="1.5" y="1.5" width="13" height="13" rx="3"/>',
   contacts:    '<circle cx="6" cy="6" r="2.5"/><path d="M1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><path d="M11 4.2a2.4 2.4 0 010 4.6M12.4 13.8c0-1.6-.5-2.7-1.4-3.4"/>',
   settings:    '<path d="M2 5h12M2 11h12"/><circle cx="6" cy="5" r="1.8"/><circle cx="10.5" cy="11" r="1.8"/>',
 };
@@ -121,18 +120,18 @@ const icon = k => `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="curre
 const NAVS = [
   ["conferences", "Conferences"],
   ["plan",        "Plan the year"],
-  ["field",       "Field mode"],
   ["contacts",    "Contacts"],
   ["settings",    "Settings"],
 ];
 
 function render() {
   const { review } = identities();
+  // Settings sits at the bottom, away from the pages a rep uses daily.
   document.getElementById("nav").innerHTML = NAVS.map(([k, label]) => {
     let cnt = "";
     if (k === "contacts") { const n = identities().contacts.length; if (n) cnt = `<span class="cnt">${n}</span>`; }
     if (k === "plan" && S.attending.size) cnt = `<span class="cnt">${S.attending.size}</span>`;
-    return `<button class="nav ${S.view === k ? "on" : ""}" onclick="go('${k}')">
+    return `<button class="nav ${S.view === k ? "on" : ""} ${k === "settings" ? "last" : ""}" onclick="go('${k}')">
       ${icon(k)}${label}${cnt}</button>`;
   }).join("");
   if (!VIEWS[S.view]) S.view = "conferences";     // the signals page is gone
@@ -348,11 +347,10 @@ function drawConf(ai) {
 
   /* ── a scored event ────────────────────────────────────────────────── */
   drawer(head, `
-    <div class="row" style="justify-content:space-between;background:var(--accent-soft);padding:12px 14px;border-radius:9px">
-      <div><div class="tiny" style="color:var(--accent-ink);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Tier ${s.tier}, ${s.label}</div>
-        <div style="font-size:13px;margin-top:3px">${s.action}</div></div>
-      <div style="text-align:right"><div class="score" style="font-size:28px">${s.total}</div>
-        <div class="tiny dim">of 100</div></div>
+    <div class="scorebar">
+      <span class="tier ${s.tier}">${s.tier}</span>
+      <span class="scorebig">${s.total}</span>
+      <span class="tiny dim">of 100</span>
     </div>
 
     ${sig ? `<div class="alert good"><b>Raised internally.</b> ${esc(sig.context)}
@@ -360,7 +358,6 @@ function drawConf(ai) {
 
     <div>
       <h4>How this score is built</h4>
-      <p class="tiny muted" style="margin:-4px 0 10px">Three estimates and one calculation. Change any estimate here.</p>
 
       ${Object.keys(DEFAULT_WEIGHTS).map(k => `
         <div style="padding:9px 0;border-top:1px solid var(--line)">
@@ -386,8 +383,7 @@ function drawConf(ai) {
           <br>÷ ${wsum} = <b>${s.raw}</b> raw
           <br>scaled to <b style="font-size:14px">${s.total}</b> out of 100
         </div>
-        <p class="tiny dim" style="margin-top:8px">Real events only score 12 to 80 raw. That band is stretched
-          onto 0 to 100 so the tiers separate. Ranking is unchanged.</p>
+        <p class="tiny dim" style="margin-top:8px">Raw scores land between 12 and 80. Stretched to 0 to 100 so the tiers separate. Ranking is unchanged.</p>
       </div>
     </div>
 
@@ -432,7 +428,7 @@ function drawConf(ai) {
     <div class="row">
       <button class="btn" onclick="toggleGoing('${c.id}');drawConf(${ai ? JSON.stringify(ai).replace(/"/g, "&quot;") : "null"})">
         ${S.attending.has(c.id) ? "Remove from plan" : "Add to plan"}</button>
-      ${c.start >= TODAY ? `<button class="btn ghost" onclick="closeDrawer();S.view='field';S.fieldConf='${c.id}';render()">Capture a lead here</button>` : ""}
+
     </div>`);
 }
 /* Estimates are opinions, so they are editable in place. Changing one
@@ -468,7 +464,7 @@ function openActivations(id, ev) {
           onchange="toggleActivation('${id}', ${JSON.stringify(a).replace(/"/g, "&quot;")}, this.checked)">
         <span>${esc(a)}</span>
       </label>`).join("")}
-    <div class="actpop-f">Pick as many as apply. Grain's Juniper Summit was a booth, a speaking slot and a side event.</div>
+    <div class="actpop-f">Pick as many as apply.</div>
   </div>`;
   document.body.insertAdjacentHTML("beforeend", `<div class="actscrim" onclick="closeActivations()"></div>` + html);
 }
@@ -749,311 +745,11 @@ VIEWS_PLAN = () => {
 };
 
 
-/* ══════════════════════════════════════════════════════════════════════
-   VIEW 3, FIELD MODE.  The show-floor interface.
-   The design constraint: a rep is standing up, holding a phone, and the
-   person in front of them is still talking. Speed beats completeness, so
-   the input is one box and the structuring happens afterwards.
-   ══════════════════════════════════════════════════════════════════════ */
-S.fieldConf = LS.get("fieldConf", null);
-S.draft = null;
-
-
-/* ══════════════════════════════════════════════════════════════════════
-   HAVE WE MET THEM ALREADY?
-
-   This runs before a lead is written, in field mode and on the stand
-   tablet. It is worth being clear about what does the deciding, because
-   "the AI checks for duplicates" is the kind of sentence that sounds
-   impressive and means nothing.
-
-   Retrieval is a database query (db.js: searchCandidates). Scoring is
-   matchConfidence() in engine.js, the same arithmetic the Contacts page
-   uses, so a person cannot be 92% a match in one screen and 60% in
-   another. Nothing here calls a model.
-
-   A model is only asked in the grey band, 50 to 84, where the rule has
-   already said it cannot settle it. That is a judgement call about two
-   humans, which is exactly the job worth spending a model on.
-   ══════════════════════════════════════════════════════════════════════ */
-const MATCH_SURE = 85;   // the rule is confident, log it against them
-const MATCH_GREY = 50;   // engine.js's review floor, where it stops calling it
-/* Field mode shows more than the engine would auto-merge, deliberately.
-   Putting a card in front of a rep who can look at the person costs
-   nothing; merging two records without asking costs a CRM. The clearest
-   case for the gap is a job change with no email: "Daniel Mercer, Adyen"
-   against "Daniel Mercer, Nuvei" scores 46, correctly too low to merge on
-   its own, and exactly the thing a rep standing there can settle in one
-   question. So the panel shows from 40 and merges from 85. */
-const MATCH_SHOW = 40;
-
-async function findKnown(rec) {
-  const me = { name: rec.name || "", company: rec.company || "",
-               title: rec.title || "", email: rec.email || "" };
-  if (!me.name && !me.email) return { checked: 0, hits: [], offline: false };
-
-  let rows = null, offline = false;
-  try { rows = await DB.searchCandidates(me); }
-  catch (e) { offline = true; }            // stand wifi. Fall back to memory.
-
-  // The database narrows; whatever is already loaded is added for free, so
-  // the check still answers when the network does not.
-  const pool = {};
-  (rows || []).forEach(r => pool[r.id] = r);
-  LEADS.forEach(l => { if (!pool[l.id]) pool[l.id] = l; });
-  const all = Object.values(pool);
-
-  const hits = all.map(l => {
-    const { score, reasons } = matchConfidence(me, {
-      name: l.full_name || "", company: l.company || "",
-      title: l.title || "", email: l.work_email || "",
-    });
-    return { lead: l, score, reasons,
-             history: allEncounters().filter(e => e.leadId === l.id)
-                        .sort((a, b) => a.at.localeCompare(b.at)) };
-  }).filter(h => h.score >= MATCH_SHOW)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-
-  return { checked: all.length, hits, offline };
-}
-
-/* The panel. It shows the arithmetic, not a verdict, because a rep who
-   can see WHY it matched can overrule it in a second. */
-function knownHTML(k, rec) {
-  if (!k) return "";
-  const src = k.offline
-    ? `<span class="tiny dim">checked ${k.checked} on this device, no network</span>`
-    : `<span class="tiny dim">checked ${k.checked} people, by email, surname and company</span>`;
-
-  if (!k.hits.length) return `
-    <div class="alert good" style="margin-bottom:10px">
-      <div class="spread"><b>New to us.</b> ${src}</div>
-      <div class="tiny" style="margin-top:3px">Nothing on file matches this email, name or company.</div>
-    </div>`;
-
-  return `<div style="margin-bottom:10px">
-    <div class="spread" style="margin-bottom:6px">
-      <h4 style="margin:0">We may have met them</h4>${src}</div>
-    ${k.hits.map((h, i) => {
-      const sure = h.score >= MATCH_SURE;
-      const last = h.history[h.history.length - 1];
-      return `<div class="card pad" style="margin-bottom:8px">
-        <div class="spread">
-          <div><b>${esc(h.lead.full_name || "unnamed")}</b>
-            <div class="tiny dim">${esc(h.lead.title || "")}${h.lead.title && h.lead.company ? " · " : ""}${esc(h.lead.company || "")}</div>
-            <div class="tiny dim">${esc(h.lead.work_email || "no email on file")}</div></div>
-          <span class="pill ${sure ? "blue" : "warn"}">${h.score}/100</span>
-        </div>
-        <div class="tiny muted" style="margin-top:6px">${h.reasons.map(esc).join(" · ")}</div>
-        ${h.history.length ? `<div class="tiny" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft)">
-            Met ${h.history.length} time${h.history.length > 1 ? "s" : ""}, last at <b>${esc(last.confName)}</b>,
-            ${last.at.slice(0, 10)}, signal <span class="sig ${last.intent}">${last.intent}</span>
-            <div class="muted" style="margin-top:2px">"${esc((last.note || "").slice(0, 120))}"</div>
-          </div>` : `<div class="tiny dim" style="margin-top:6px">On file, but no encounter logged yet.</div>`}
-        ${sure
-          ? `<div class="tiny" style="margin-top:6px;color:var(--ok-ink)">Above ${MATCH_SURE}, the rule calls this the same person.</div>`
-          : `<div class="tiny" style="margin-top:6px">Below ${MATCH_SURE} the rule will not call it${h.score < MATCH_GREY ? ", and below " + MATCH_GREY + " it would not merge them on its own" : ""}.
-               <button class="btn sm ghost" style="margin-left:6px" onclick="adjudicateDraft(${i})">Ask the model</button>
-               <span id="adj_${i}"></span></div>`}
-        <div class="row" style="margin-top:8px">
-          <button class="btn sm" onclick="commitDraft('${h.lead.id}')">Same person, log against them</button>
-        </div>
-      </div>`; }).join("")}
-    <div class="tiny dim">Or confirm below and it saves as somebody new.</div>
-  </div>`;
-}
-
-/* The grey band, and only the grey band. */
-async function adjudicateDraft(i) {
-  const d = S.draft; if (!d || !d.known) return;
-  const h = d.known.hits[i];
-  const slot = document.getElementById("adj_" + i);
-  slot.innerHTML = ` <span class="spin"></span> reading both records…`;
-  const last = h.history[h.history.length - 1];
-  const A = { name: d.rec.name, title: d.rec.title, company: d.rec.company, email: d.rec.email,
-              note: d.raw, confName: d.conf.name, at: new Date().toISOString(), rep: REP_NAME() };
-  const B = last
-    ? { name: last.name, title: last.title, company: last.company, email: last.email,
-        note: last.note, confName: last.confName, at: last.at, rep: last.rep }
-    : { name: h.lead.full_name, title: h.lead.title, company: h.lead.company, email: h.lead.work_email,
-        note: "no encounter logged", confName: "on file only", at: new Date().toISOString(), rep: "-" };
-  const r = await ask(`adjf:${h.lead.id}`, () => AI.adjudicateMatch(A, B, h.score, h.reasons),
-    () => ({ verdict: "unsure", confidence: 55, reasoning: "Demo mode, no model configured.", tell: "-" }));
-  if (r.__error) { slot.innerHTML = ` <span class="tiny bad">model unavailable, your call</span>`; return; }
-  const tone = r.verdict === "same" ? "blue" : r.verdict === "different" ? "warn" : "";
-  slot.innerHTML = ` <span class="pill ${tone}">${esc(r.verdict)} · ${r.confidence}%</span>
-    <div class="tiny muted" style="margin-top:3px">${esc(r.reasoning)}${r.tell && r.tell !== "-" ? ` <b>Tell:</b> ${esc(r.tell)}` : ""}</div>
-    <div class="tiny dim">Advisory. It does not merge anything, you do.</div>`;
-}
-
-/* Re-run the check when the rep corrects a field in the draft. The email
-   they type by hand is usually better than the one parsed out of a
-   sentence, and it is the field that decides the match. */
-async function recheckDraft() {
-  const d = S.draft; if (!d) return;
-  const g = id => (document.getElementById(id) || {}).value || "";
-  d.rec = { ...d.rec, name: g("f_name"), company: g("f_company"), title: g("f_title"), email: g("f_email") };
-  const slot = document.getElementById("knownbox");
-  if (slot) slot.innerHTML = `<div class="tiny dim"><span class="spin"></span> checking who we already know…</div>`;
-  d.known = await findKnown(d.rec);
-  const s2 = document.getElementById("knownbox");
-  if (s2) s2.innerHTML = knownHTML(d.known, d.rec);
-}
-
-VIEWS_FIELD = () => {
-  const opts = upcoming().concat(CONFERENCES.filter(c => c.start < TODAY && c.end >= "2026-09-01"));
-  const conf = confById(S.fieldConf) || opts[0];
-  const today = allEncounters().filter(e => e.confId === conf?.id).length;
-  return `
-  <div class="head">
-    <div class="spread">
-      <h1>Field mode</h1>
-      <a class="btn ghost" href="join.html" target="_blank" rel="noopener">Open the stand tablet</a>
-    </div>
-    <p>One box. Say what you'd say to a colleague, it gets structured after you save.</p>
-  </div>
-
-  <div class="field">
-    <div class="spread" style="margin-bottom:10px">
-      <select class="inp" style="width:auto" onchange="S.fieldConf=this.value;LS.set('fieldConf',this.value);render()">
-        ${opts.map(c => `<option value="${c.id}"${conf?.id === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}</option>`).join("")}
-      </select>
-      <span class="tiny dim">${today} logged here</span>
-    </div>
-
-    <textarea id="raw" placeholder="met nadia @ wafeq, gulf b2b invoicing, their SMEs invoice usd/eur settle aed, asked how we price the hedge"
-      >${esc(S.rawText || "")}</textarea>
-    <div class="chips">
-      <span class="tiny dim" style="align-self:center">Try:</span>
-      <button class="chip" onclick="fillDemo(1)">A hot lead</button>
-      <button class="chip" onclick="fillDemo(2)">Half a name and a company</button>
-      <button class="chip" onclick="fillDemo(3)">Someone we've met before</button>
-    </div>
-    <button class="btn bigbtn" onclick="doCapture()" id="capbtn">Save lead</button>
-
-
-    <div id="draft" style="margin-top:18px"></div>
-
-    ${today ? `<div class="card pad" style="margin-top:20px">
-      <h4>Logged at ${esc(conf.name)}</h4>
-      ${allEncounters().filter(e => e.confId === conf.id).reverse().map(e => `
-        <div class="spread" style="border-top:1px solid var(--line2);padding:8px 0">
-          <div><b style="font-size:13px">${esc(e.name)}</b> <span class="tiny dim">${esc(e.company)}${e.title ? " · " + esc(e.title) : ""}</span>
-            <div class="tiny muted" style="margin-top:2px">${esc(e.note).slice(0, 110)}${e.note.length > 110 ? "…" : ""}</div></div>
-          <span class="sig ${e.intent}">${e.intent}</span>
-        </div>`).join("")}
-    </div>` : ""}
-  </div>`;
-};
-const DEMOS = [null,
-  "met nadia @ wafeq, gulf b2b invoicing platform. their SMEs invoice in usd/eur but settle aed+sar, spread is a constant complaint. asked how we price the hedge. didnt get her email",
-  "guy from mirakl, sophie something? marketplace payments. 300 marketplace clients. wants to know about rev share",
-  "ran into daniel mercer again at the nuvei stand, third time now. asked about THB and MXN. said q1 budget opens november"];
-function fillDemo(i) { document.getElementById("raw").value = DEMOS[i]; }
-
-async function doCapture() {
-  const raw = document.getElementById("raw").value.trim();
-  if (!raw) return;
-  const conf = confById(S.fieldConf) || upcoming()[0];
-  const btn = document.getElementById("capbtn");
-  btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Structuring…`;
-  const r = await ask(`cap:${raw.slice(0, 60)}`, () => AI.parseCapture(raw, conf.name, conf.id), () => DEMO.capture(raw));
-  btn.disabled = false; btn.textContent = "Save lead";
-
-  // The model failing must not mean the lead is lost OR that the duplicate
-  // check is skipped. Fall through to the same draft with empty fields: the
-  // rep types the email, and the check, which never needed a model, runs.
-  const failed = !!r.__error;
-  const rec = failed
-    ? { name: "", company: "", title: "", email: "", phone: "", intent: "warm", note: raw, icpSignals: [], missing: [] }
-    : { name: r.name || "", company: r.company || "", title: r.title || "", email: r.email || "",
-        phone: r.phone || "", intent: r.intent || "warm", note: r.note || raw,
-        icpSignals: r.icpSignals || [], missing: r.missing || [] };
-
-  S.draft = { r, rec, conf, raw, known: null, failed };
-  drawDraft();
-  S.draft.known = await findKnown(rec);      // deterministic, engine.js
-  const box = document.getElementById("knownbox");
-  if (box) box.innerHTML = knownHTML(S.draft.known, rec);
-}
-
-function drawDraft() {
-  const d = S.draft; if (!d) return;
-  const { r, rec, failed } = d;
-  document.getElementById("draft").innerHTML = `
-    <div class="ai">
-      ${failed
-        ? `<div class="alert bad"><b>AI unavailable.</b> ${esc(r.__error)}
-             Nothing is lost, the raw note is below. Type the email and the
-             duplicate check still runs, it never needed a model.</div>`
-        : ""}
-      <h4>Check before it saves ${failed ? "" : badge(r)}</h4>
-
-      <div id="knownbox" style="margin-bottom:10px">
-        <div class="tiny dim"><span class="spin"></span> checking who we already know…</div>
-      </div>
-
-      <div class="kv" style="margin-bottom:10px">
-        ${[["email", "Work email"], ["name", "Name"], ["company", "Company"], ["title", "Title"], ["phone", "Phone"]].map(([k, l]) =>
-          `<label>${l}</label><input class="inp" id="f_${k}" value="${esc(rec[k] || "")}" placeholder="-"
-             ${["email", "name", "company"].includes(k) ? `onchange="recheckDraft()"` : ""}>`).join("")}
-        <label>Signal</label>
-        <select class="inp" id="f_intent">${["cold", "warm", "hot"].map(i =>
-          `<option${rec.intent === i ? " selected" : ""}>${i}</option>`).join("")}</select>
-        <label>Note</label><textarea class="inp" id="f_note" style="min-height:64px">${esc(rec.note || "")}</textarea>
-      </div>
-
-
-      ${(rec.icpSignals || []).length ? `<h4 style="margin-bottom:5px">ICP signals it spotted</h4>
-        <div class="chips" style="margin-bottom:10px">${rec.icpSignals.map(sg => `<span class="pill" style="background:var(--accent-soft);color:var(--accent-ink)">${esc(sg)}</span>`).join("")}</div>` : ""}
-      ${(rec.missing || []).length ? `<div class="alert" style="margin-bottom:10px"><b>Grab before they walk off:</b> ${rec.missing.map(esc).join(" · ")}</div>` : ""}
-      <button class="btn" onclick="commitDraft()">Confirm &amp; save as new</button>
-      <button class="btn ghost" onclick="S.draft=null;document.getElementById('draft').innerHTML=''">Discard</button>
-    </div>`;
-}
-
-function commitDraft(existingLeadId) {
-  const g = id => document.getElementById(id)?.value || "";
-  const d = S.draft;
-  commit({ name: g("f_name"), company: g("f_company"), title: g("f_title"), email: g("f_email"),
-    phone: g("f_phone"), intent: g("f_intent"), note: g("f_note"),
-    // The signals the model spotted belong on the encounter either way, and
-    // there is no input for them, so they come off the draft rather than
-    // being quietly dropped when the rep edits a field.
-    icpSignals: (d && d.rec && d.rec.icpSignals) || [], segment: (d && d.r && d.r.segment) || null },
-    d.conf, d.raw, existingLeadId || undefined);
-}
-async function commit(rec, conf, raw, existingLeadId) {
-  try {
-    let leadId = existingLeadId;
-    if (!leadId) {
-      const lead = await DB.upsertLead({
-        full_name: rec.name || "(unnamed)", work_email: rec.email || null,
-        company: rec.company || null, title: rec.title || null,
-        phone: rec.phone || null, icp_segment: rec.segment || null,
-      });
-      leadId = lead.id;
-    }
-    await DB.addEncounter({
-      lead_id: leadId, conference_id: conf.id, rep: REP_NAME(),
-      met_at: new Date().toISOString(), intent: rec.intent || "warm",
-      raw_note: raw, note: rec.note || raw,
-      name_as_given: rec.name || null, company_as_given: rec.company || null,
-      title_as_given: rec.title || null, email_as_given: rec.email || null,
-      icp_signals: rec.icpSignals || [],
-    });
-    S.rawText = ""; S.draft = null;
-    await reload();
-    const { contacts } = identities();
-    const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
-    toast(c && c.touches > 1
-      ? `Saved. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
-      : "Saved.");
-    await autoPush(leadId);        // hot and warm only, see AUTO_PUSH
-  } catch (e) { toast("Save failed: " + e.message, true); }
-}
-const REP_NAME = () => localStorage.getItem("rep_name") || "You";
+/* Field mode is its own page now (join.html), opened from Contacts. The
+   duplicate check, the note box and the meeting all live there, because the
+   rep is holding a tablet rather than sitting at this table. What used to be
+   here, a free-text box that a model parsed into fields, was doing the same
+   job twice.                                                              */
 
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 4, CONTACTS.  Cross-conference intelligence.
@@ -1135,7 +831,10 @@ VIEWS_CONTACTS = () => {
   <div class="head">
     <div class="spread">
       <h1>Contacts</h1>
-      <button class="btn" onclick="openAddPerson()">Add a person</button>
+      <div class="row" style="gap:8px">
+        <a class="btn ghost" href="join.html" target="_blank" rel="noopener">Field mode</a>
+        <button class="btn" onclick="openAddPerson()">Add a person</button>
+      </div>
     </div>
   </div>
 
@@ -1190,7 +889,7 @@ VIEWS_CONTACTS = () => {
           <select class="status ls-${r.leadStatus.replace(/\s/g, "")}" onchange="setLeadStatus('${r.leadId}', this.value)">
             ${LEAD_STATUS.map(o => `<option${r.leadStatus === o ? " selected" : ""}>${o}</option>`).join("")}
           </select>
-          ${r.needsReview ? `<div class="pill warn" title="Two records that might be the same person">check identity</div>` : ""}</td>
+        </td>
         <td class="tiny">${esc(r.company || "")}
           ${r.changedCompany ? `<div class="pill warn">changed employer</div>` : ""}</td>
         <td>${r.segment ? `<span class="pill ${TAG_TONE(r.segment)}">${esc(r.segment)}</span>` : `<span class="dim tiny">-</span>`}</td>
@@ -1424,10 +1123,10 @@ function pushState(c) {
    push" means nobody has to do anything. The navy "Push" is the only one that
    needs a human, and it only ever appears on a cold lead. */
 const PUSH_LABEL = {
-  pushed: `<span class="pill blue">pushed</span>`,
+  pushed: `<span class="pill">pushed</span>`,
   queued: `<button class="btn auto sm" title="Hot or warm, so it goes on its own. No relay URL set in Settings yet, so it is waiting.">Auto push</button>`,
   auto:   `<button class="btn auto sm" title="Hot and warm are pushed on their own when saved">Auto push</button>`,
-  manual: `<button class="btn ghost sm">Push</button>`,
+  manual: `<button class="btn sm">Push</button>`,
 };
 const pushBadge = c => PUSH_LABEL[pushState(c)];
 
@@ -1511,7 +1210,7 @@ VIEWS_SETTINGS = () => {
   const c = AI.cfg();
   return `
   <div class="head"><h1>Settings</h1>
-    <p>Keys are stored in this browser only, never in the repository.</p></div>
+    <p>Keys live in this browser only.</p></div>
 
   <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="card pad">
@@ -1533,16 +1232,15 @@ VIEWS_SETTINGS = () => {
       </div>
       <div class="alert ${AI.viaProxy() ? "good" : ""}" style="margin-top:12px">
         <b>Route: ${AI.mode()}.</b>
-        ${AI.mode() === "proxy" ? "Calls go through n8n. Visitors need no key of their own."
-          : AI.mode() === "key" ? "Calls go straight from this browser using the key below."
-          : "No route configured, so AI features return pre-written responses badged <i>demo</i>. Nothing dead-ends."}
+        ${AI.mode() === "proxy" ? "Through n8n. Visitors need no key."
+          : AI.mode() === "key" ? "Straight from this browser, using the key below."
+          : "None set. AI features return pre-written responses badged <i>demo</i>."}
       </div>
     </div>
 
     <div class="card pad">
       <h3>AI provider</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px">A fallback for when n8n is unreachable, and the
-        answer to the brief's "keys configurable by the user, not hardcoded".</p>
+      <p class="tiny muted" style="margin:-4px 0 10px">Fallback for when n8n is unreachable.</p>
       <div class="kv" style="margin-bottom:12px">
         <label>Provider</label>
         <select class="inp" onchange="localStorage.setItem('ai_provider',this.value);localStorage.removeItem('ai_model');render()">
@@ -1562,24 +1260,22 @@ VIEWS_SETTINGS = () => {
       </div>
       <div id="keytest" class="tiny" style="margin-top:9px"></div>
       <div class="alert ${AI.hasKey() ? "good" : ""}" style="margin-top:12px">
-        ${AI.hasKey() ? `<b>Live mode.</b> Every AI feature calls the provider.`
-          : `<b>Demo mode.</b> No key set, so AI features return pre-written responses of the same shape,
-             badged <i>demo response</i>. Everything stays clickable, the tool doesn't dead-end on a missing key.`}
+        ${AI.hasKey() ? `<b>Live.</b> Every AI feature calls the provider.`
+          : `<b>Demo.</b> No key set. AI features return pre-written responses badged <i>demo response</i>, so nothing dead-ends.`}
       </div>
     </div>
 
     <div class="card pad">
       <h3>HubSpot</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px;line-height:1.6">HubSpot's API can't be called from a browser -
-        no CORS, and a private-app token in client-side JavaScript would be readable by anyone who opens the page.
-        So the tool builds the exact payload and POSTs it to a relay you control (a Make/Zapier webhook or a small
-        serverless function). No relay set means it shows the payload rather than pretending to sync.</p>
+      <p class="tiny muted" style="margin:-4px 0 10px">HubSpot blocks browser calls, and a token in client-side
+        JavaScript is readable by anyone. The payload goes to a relay you control instead. With no relay set,
+        the tool shows you the payload.</p>
       <div class="kv">
         <label>Relay URL</label>
         <input class="inp" placeholder="https://hook.eu2.make.com/…" value="${esc(localStorage.getItem("hubspot_relay") || "")}"
           oninput="localStorage.setItem('hubspot_relay',this.value)">
       </div>
-      <div class="alert" style="margin-top:11px"><b>Custom properties the payload expects:</b>
+      <div class="alert" style="margin-top:11px"><b>Custom properties expected:</b>
         <span class="mono">grain_conference_touches</span>, <span class="mono">grain_relationship_pattern</span>,
         <span class="mono">grain_first_met_at</span>, <span class="mono">grain_last_met_at</span>,
         <span class="mono">grain_priority</span></div>
@@ -1650,7 +1346,7 @@ function closeDrawer() {
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
 
-const VIEWS = { conferences: VIEWS_CONF, plan: VIEWS_PLAN, field: VIEWS_FIELD,
+const VIEWS = { conferences: VIEWS_CONF, plan: VIEWS_PLAN,
   contacts: VIEWS_CONTACTS, settings: VIEWS_SETTINGS };
 
 /* ══════════════════════════════════════════════════════════════════════

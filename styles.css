@@ -11,7 +11,7 @@
   --line:#E9EDF7; --line2:#F1F4FB;
   --accent:#5B9FFF; --accent-soft:#EAF1FE; --accent-ink:#1B5FD9;
   --a:#2B3674; --b:#3D82F7; --c:#8D92B1; --d:#C9D0E3;
-  --hot:#D0342C; --warm:#B7791F; --cold:#8D92B1;
+  --hot:#D0342C; --warm:#B7791F; --cold:#2F6FD0;
   --good:#2B3674; --bad:#D0342C;
   --r:8px; --sh:0 1px 2px rgba(43,54,116,.05), 0 8px 24px rgba(43,54,116,.06);
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
@@ -489,3 +489,20 @@ table.fixed .status{max-width:100%}
 /* Auto push: a real button, greyed, because pressing it is optional. */
 .btn.auto{background:var(--line2);color:var(--muted);border:1px solid var(--line);font-weight:600;white-space:nowrap}
 .btn.auto:hover{background:var(--line);color:var(--ink2)}
+
+/* Settings drops to the bottom of the nav. */
+.nav.last{margin-top:auto}
+nav#nav{display:flex;flex-direction:column;flex:1;min-height:0}
+
+/* Score and tier, nothing else. */
+.scorebar{display:flex;align-items:baseline;gap:12px;background:var(--accent-soft);
+  padding:14px 16px;border-radius:9px}
+.scorebar .tier{width:28px;height:28px;font-size:14px;align-self:center}
+.scorebig{font-size:34px;font-weight:800;color:var(--accent-ink);line-height:1}
+
+/* Source labels carry the same colour in the dropdown as they did as pills. */
+.status.src-Manual{background:#F1F3F9;color:#7A84A6}
+.status.src-Slack{background:#E4F4EC;color:#1D7A52}
+.status.src-Meetingnotes{background:#FBEFE4;color:#96551A}
+.status.src-AIsearch{background:#EDE8FA;color:#5B3FA8}
+.status.src-LinkedIn{background:#E3EDFD;color:#12509C}

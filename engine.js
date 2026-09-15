@@ -52,27 +52,27 @@ const DEFAULT_WEIGHTS = {
 const WEIGHT_INFO = {
   icpDensity: {
     label: "ICP fit",
-    short: "Is the room full of our buyers?",
-    long: "The share of attendees that are marketplaces, PSPs, travel and e-commerce platforms, BNPL, stablecoin or payroll companies. What matters is whether they move money across currencies, not what the event calls itself. This is why a travel-tech summit can beat a payments expo.",
-    source: "Estimated from the exhibitor list and audience breakdown.",
+    short: "How much of the room is a buyer",
+    long: "Share of attendees that move money across currencies: marketplaces, PSPs, travel and e-commerce platforms, BNPL, stablecoin, payroll. The industry label on the event does not matter. A travel-tech summit can outrank a payments expo.",
+    source: "Estimate. Exhibitor list and audience breakdown.",
   },
   seniority: {
     label: "Seniority",
-    short: "Can they say yes?",
-    long: "Whether companies send people who own the FX line or people who report to them. A small senior room beats a large junior one.",
-    source: "Organisers publish this to sell sponsorships.",
+    short: "Whether they can sign",
+    long: "Does the company send the person who owns the FX line, or someone who reports to them. A small senior room beats a large junior one.",
+    source: "Estimate. Organisers publish it to sell sponsorships.",
   },
   efficiency: {
     label: "Cost per conversation",
-    short: "What does a useful conversation cost?",
-    long: "Ticket plus flight and hotel from Tel Aviv, divided by the buyers one rep can realistically reach. Capped at 20 conversations a day, so a 40,000-person expo does not win on size alone.",
-    source: "Calculated, not estimated. The only one.",
+    short: "What one useful conversation costs",
+    long: "Ticket plus flight and hotel from Tel Aviv, divided by the buyers one rep can reach. Capped at 20 a day, so size alone does not win.",
+    source: "Calculated from ticket, travel and audience.",
   },
   strategic: {
     label: "Strategic reach",
-    short: "Partners, and markets we want to open",
-    long: "Two things that both pay off later than a deal does. Are the platforms that could ship Grain to their own customer base in the room, the ones who would embed us rather than buy from us. And does this event open a market Grain is trying to enter this year. A mediocre event in a corridor we are pushing into can be worth more than a good one where we are already known.",
-    source: "Partners come off the exhibitor list. The market priority is a decision the company makes, not a fact about the event.",
+    short: "Regions and partners we want",
+    long: "Does this open a region Grain is pushing into this year, and are the platforms who could embed us in the room. A weak event in a corridor we want can beat a strong one where we are already known.",
+    source: "Estimate. Region priority is a company decision.",
   },
 };
 
