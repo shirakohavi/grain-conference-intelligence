@@ -170,7 +170,7 @@ function weightsPanel() {
     <div class="spread wstrip-head">
       <h4 style="margin:0">Scoring weights</h4>
       <div class="row" style="gap:10px">
-        <span class="tiny ${total === 100 ? "dim" : "bad"}">${total} / 100</span>
+        <span class="tiny ${total === 100 ? "dim" : "bad"}" id="wtotal">${total} / 100</span>
         <button class="btn ghost sm" onclick="S.weights={...DEFAULT_WEIGHTS};S.aiCache={};save();render()">Reset</button>
       </div>
     </div>
@@ -183,11 +183,11 @@ function weightsPanel() {
           <div class="spread" style="align-items:baseline">
             <button class="wname" onclick="S.wOpen = S.wOpen === '${k}' ? null : '${k}'; render()">
               ${esc(w.label)}<span class="winfo">?</span></button>
-            <b class="mono">${S.weights[k]}</b>
+            <b class="mono" id="wv_${k}">${S.weights[k]}</b>
           </div>
           <div class="tiny dim">${esc(w.short)}</div>
           <input type="range" min="0" max="60" value="${S.weights[k]}"
-            oninput="S.weights['${k}']=+this.value;S.aiCache={};save();render()">
+            oninput="reweight('${k}', +this.value)" onchange="save();render()">
         </div>`;
       }).join("")}
     </div>
@@ -242,7 +242,14 @@ VIEWS_CONF = () => {
   ${weightsPanel()}
 
   <div class="card" style="margin-top:16px">
-      <div class="pad tablewrap" style="padding-bottom:6px"><table>
+      <div class="pad tablewrap" style="padding-bottom:6px" id="conftable">${confTableHTML(list)}</div>
+  </div>`;
+};
+
+/* The table is its own function so moving a scoring slider can refresh it
+   without rebuilding the slider the mouse is holding. */
+function confTableHTML(list) {
+  return `<table>
         <thead><tr>
           <th style="min-width:180px">Event</th>
           <th style="width:104px">Vertical</th>
@@ -286,10 +293,34 @@ VIEWS_CONF = () => {
             <td class="tiny muted">${fmtRange(c)}<div class="dim">${esc(c.city)}, ${esc(c.country)}</div></td>
           </tr>`; }).join("")}
         </tbody></table>
-        ${list.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
-      </div>
-  </div>`;
-};
+        ${list.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}`;
+}
+
+/* Dragging a weight: update the readout, the total and the table. Never the
+   slider, because replacing it mid-drag drops the pointer and the value ends
+   up wherever the dead element was. */
+function reweight(k, v) {
+  S.weights[k] = v; S.aiCache = {};
+  const r = document.getElementById("wv_" + k); if (r) r.textContent = v;
+  const t = document.getElementById("wtotal");
+  const total = Object.values(S.weights).reduce((a, b) => a + b, 0);
+  if (t) { t.textContent = total + " / 100"; t.className = "tiny " + (total === 100 ? "dim" : "bad"); }
+  const box = document.getElementById("conftable");
+  if (box) {
+    let l = scored();
+    if (F.when === "upcoming") l = l.filter(x => x.c.start >= TODAY);
+    if (F.when === "past") l = l.filter(x => x.c.start < TODAY);
+    if (F.region) l = l.filter(x => x.c.region === F.region);
+    if (F.tier) l = l.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
+    if (F.vertical) l = l.filter(x => x.c.verticals.includes(F.vertical));
+    if (F.source) l = l.filter(x => x.c.source === F.source);
+    if (F.status) l = l.filter(x => x.c.status === F.status);
+    if (F.q) { const q = F.q.toLowerCase();
+      l = l.filter(x => (x.c.name + x.c.city + x.c.country + x.c.verticals.join()).toLowerCase().includes(q)); }
+    l.sort((a, b) => (b.s.unscored ? 1e6 : b.s.total) - (a.s.unscored ? 1e6 : a.s.total));
+    box.innerHTML = confTableHTML(l);
+  }
+}
 VIEWS_CONF.after = () => {
   const e = document.getElementById("convq");
   if (e && F.q) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
@@ -1473,18 +1504,18 @@ function openAddConference() {
 
 function drawAddConf() {
   const d = S.newConf;
-  // Score the draft exactly as a saved row would be scored, same function.
-  const preview = (d.start && d.end)
-    ? scoreConference({ ...d, id: "draft" }, S.weights) : null;
+  /* Typing must not redraw the drawer. It did, and every keystroke destroyed
+     the input the cursor was in, so the field had to be clicked again for
+     each letter. Text and slider changes now only refresh the live score. */
   const F = (k, label, type = "text", extra = "") =>
     `<label>${label}</label><input class="inp" type="${type}" value="${esc(d[k] ?? "")}" ${extra}
-       oninput="S.newConf['${k}']=${type === "number" ? "+this.value" : "this.value"};drawAddConf()">`;
+       oninput="S.newConf['${k}']=${type === "number" ? "+this.value" : "this.value"};confPreview()">`;
   const SLIDER = (k, label, help) => `
     <div style="margin-bottom:13px">
       <div class="spread tiny" style="margin-bottom:3px">
-        <span style="font-weight:550">${label}</span><b class="mono">${d[k]}</b></div>
+        <span style="font-weight:550">${label}</span><b class="mono" id="sv_${k}">${d[k]}</b></div>
       <input type="range" min="0" max="100" value="${d[k]}" style="width:100%;accent-color:var(--accent)"
-        oninput="S.newConf['${k}']=+this.value;drawAddConf()">
+        oninput="S.newConf['${k}']=+this.value;document.getElementById('sv_${k}').textContent=this.value;confPreview()">
       <div class="tiny dim" style="margin-top:2px">${help}</div>
     </div>`;
 
@@ -1503,7 +1534,7 @@ function drawAddConf() {
         ${REGIONS.map(r => `<option value="${r}"${d.region === r ? " selected" : ""}>${rshort(r)}</option>`).join("")}</select>
       <label>Verticals</label>
       <input class="inp" value="${esc(d.verticals.join(", "))}" placeholder="Payments, Travel Tech"
-        oninput="S.newConf.verticals=this.value.split(',').map(s=>s.trim()).filter(Boolean);drawAddConf()">
+        oninput="S.newConf.verticals=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
       ${F("audienceSize", "Attendance", "number")}
       ${F("ticketEur", "Ticket (EUR)", "number")}
       <label>How we show up</label>
@@ -1537,7 +1568,19 @@ function drawAddConf() {
       ${SLIDER("strategic", WEIGHT_INFO.strategic.label, WEIGHT_INFO.strategic.short)}
     </div>
 
-    ${preview ? `<div class="ai">
+    <div id="confprev">${confPreviewHTML()}</div>
+
+    <div class="row">
+      <button class="btn" id="confsave" onclick="saveConference()" ${!(d.name && d.start && d.end) ? "disabled" : ""}>Add to the database</button>
+      <button class="btn ghost" onclick="S.newConf=null;closeDrawer()">Cancel</button>
+    </div>`);
+}
+
+/* The only part of the drawer that changes as you type. */
+function confPreviewHTML() {
+  const d = S.newConf; if (!d) return "";
+  const preview = (d.start && d.end) ? scoreConference({ ...d, id: "draft" }, S.weights) : null;
+  return preview ? `<div class="ai">
       <h4>Scored live</h4>
       <div class="row" style="gap:10px;margin-bottom:8px">
         <span class="tier ${preview.tier}">${preview.tier}</span>
@@ -1550,12 +1593,15 @@ function drawAddConf() {
         ÷ ${preview.eff.reachable} reachable ICP contacts over ${preview.eff.days} day${preview.eff.days > 1 ? "s" : ""}
         = <b>${eur(preview.eff.costPerContact)} per qualified conversation</b>
       </div></div>`
-      : `<div class="alert">Set the dates to see the score.</div>`}
+    : `<div class="alert">Set the dates to see the score.</div>`;
+}
 
-    <div class="row">
-      <button class="btn" onclick="saveConference()" ${!(d.name && d.start && d.end) ? "disabled" : ""}>Add to the database</button>
-      <button class="btn ghost" onclick="S.newConf=null;closeDrawer()">Cancel</button>
-    </div>`);
+function confPreview() {
+  const d = S.newConf; if (!d) return;
+  const box = document.getElementById("confprev");
+  if (box) box.innerHTML = confPreviewHTML();
+  const save = document.getElementById("confsave");
+  if (save) save.disabled = !(d.name && d.start && d.end);
 }
 
 async function saveConference() {
