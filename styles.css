@@ -485,6 +485,11 @@ table.fixed{table-layout:fixed;width:100%}
 table.fixed td{overflow:hidden;text-overflow:ellipsis}
 table.fixed td .cell-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 table.fixed .status{max-width:100%}
+/* The lead status dropdown was wide enough to squeeze the signal column until
+   WARM was clipped to WA. Tighter chrome on the dropdown, and a signal that
+   never wraps or truncates. */
+table.fixed .status{padding-right:18px;padding-left:7px;background-position:right 5px center}
+table.fixed .sig{white-space:nowrap}
 
 /* Auto push: a real button, greyed, because pressing it is optional. */
 .btn.auto{background:var(--line2);color:var(--muted);border:1px solid var(--line);font-weight:600;white-space:nowrap}

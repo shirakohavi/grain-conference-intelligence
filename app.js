@@ -910,14 +910,14 @@ VIEWS_CONTACTS = () => {
   <div class="card"><div class="pad tablewrap" style="padding-bottom:6px"><table class="fixed">
     <thead><tr>
       ${TH("name", "Name", "152px")}
-      <th style="width:114px">Lead status</th>
+      <th style="width:108px">Lead status</th>
       ${TH("company", "Company", "100px")}
       <th style="width:98px">Segment</th>
       <th style="width:128px">Work email</th>
       ${TH("touches", "Met", "42px")}
-      <th style="width:142px">Where</th>
+      <th style="width:140px">Where</th>
       ${TH("last", "Last seen", "114px")}
-      ${TH("signal", "Signal", "56px")}
+      ${TH("signal", "Signal", "64px")}
       <th style="width:106px">HubSpot</th>
     </tr></thead>
     <tbody>${rows.map(r => `
