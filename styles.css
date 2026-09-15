@@ -515,3 +515,9 @@ nav#nav{display:flex;flex-direction:column;flex:1;min-height:0}
   border-bottom:1px solid var(--line)}
 .boxmeta .pill{flex:none}
 .box .boxrow:first-of-type{border-top:0}
+
+/* A selected chip had no style of its own, so picking one looked exactly like
+   hovering it and nothing appeared to happen. */
+.chip.on{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent-ink);font-weight:600}
+.chip.on:hover{border-color:var(--accent);color:var(--accent-ink)}
