@@ -67,6 +67,10 @@ const TAG_TONE = v =>
   : /travel|luxury/i.test(v) ? "sand" : "";
 const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
 
+/* Who is logging. Set in Settings, and field mode keeps its own copy because
+   it runs on a different device. */
+const REP_NAME = () => localStorage.getItem("rep_name") || localStorage.getItem("fm_rep") || "Unassigned";
+
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 const fmtRange = c => c.start === c.end ? `${fmtDate(c.start)} ${c.start.slice(0, 4)}`
@@ -696,10 +700,10 @@ VIEWS_PLAN = () => {
   <div class="boxes">
     ${clusters.slice(0, 6).map(cl => `
       <div class="card pad box">
-        <div class="spread" style="margin-bottom:6px">
-          <b>${esc(cl.title)}</b>
+        <div class="boxtitle">${esc(cl.title)}</div>
+        <div class="spread boxmeta">
+          <span class="tiny dim">${fmtDate(cl.start)} to ${fmtDate(cl.end)} · ${cl.span} days · ${esc(rshort(cl.region))}</span>
           <span class="pill blue">saves ${eur(cl.savedTravel)}</span></div>
-        <div class="tiny dim" style="margin-bottom:9px">${fmtDate(cl.start)} to ${fmtDate(cl.end)} · ${cl.span} days · ${esc(rshort(cl.region))}</div>
         ${cl.items.map((c, i) => `
           <button class="boxrow" onclick="openConf('${c.id}')">
             <span class="tier ${cl.scores[i].tier}">${cl.scores[i].tier}</span>
@@ -718,9 +722,10 @@ VIEWS_PLAN = () => {
   <div class="boxes">
     ${gaps.coverage.map(g => `
       <div class="card pad box gap">
-        <div class="spread" style="margin-bottom:6px">
-          <b>${esc(rshort(g.region))}</b><span class="pill warn">nothing booked</span></div>
-        <div class="tiny dim" style="margin-bottom:9px">${g.events.length} event${g.events.length > 1 ? "s" : ""} worth attending, none of them booked.</div>
+        <div class="boxtitle">${esc(rshort(g.region))}</div>
+        <div class="spread boxmeta">
+          <span class="tiny dim">${g.events.length} event${g.events.length > 1 ? "s" : ""} worth attending</span>
+          <span class="pill warn">nothing booked</span></div>
         ${g.events.slice(0, 3).map(({ c, s: sc }) => `
           <button class="boxrow" onclick="openConf('${c.id}')">
             <span class="tier ${sc.tier}">${sc.tier}</span>
@@ -730,10 +735,10 @@ VIEWS_PLAN = () => {
       </div>`).join("")}
     ${gaps.calendar.map(g => `
       <div class="card pad box gap">
-        <div class="spread" style="margin-bottom:6px">
-          <b>${monthName(g.from)} to ${monthName(g.to)}</b>
+        <div class="boxtitle">${monthName(g.from)} to ${monthName(g.to)}</div>
+        <div class="spread boxmeta">
+          <span class="tiny dim">Nothing booked, options existed</span>
           <span class="pill warn">${g.months} quiet month${g.months > 1 ? "s" : ""}</span></div>
-        <div class="tiny dim" style="margin-bottom:9px">Nothing booked, but there were options.</div>
         ${g.missed.map(({ c, s: sc }) => `
           <button class="boxrow" onclick="openConf('${c.id}')">
             <span class="tier ${sc.tier}">${sc.tier}</span>
@@ -771,6 +776,11 @@ const CSORT = { key: "priority", dir: -1 };
    they are in HubSpot, HubSpot's stages are the truth, and two systems holding
    a different answer is worse than one system holding none. */
 const LEAD_STATUS = ["New", "Contacted", "Qualified", "Not a fit"];
+
+/* The same three tests field mode puts on its chips. A signal a rep has to
+   feel is a signal two reps will disagree about, and this field decides
+   whether HubSpot gets the lead on its own. */
+const INTENT_HELP = "hot = named a budget or a date · warm = told us their FX problem · cold = no problem named";
 
 function contactRows() {
   const { contacts, review } = identities();
@@ -1588,7 +1598,8 @@ function openAddPerson(confId) {
   S.ap = { stage: "email", email: "", matches: [], checking: false,
     leadId: null, known: null,
     fields: { name: "", company: "", title: "", phone: "", segment: "PSP" },
-    confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "" };
+    confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "",
+    rep: REP_NAME() === "Unassigned" ? "" : REP_NAME() };
   drawAddPerson();
 }
 
@@ -1693,8 +1704,11 @@ function drawAddPerson() {
         <label>Note</label>
         <textarea class="inp" style="min-height:84px" placeholder="What did they actually say?"
           oninput="S.ap.note=this.value">${esc(a.note)}</textarea>
+        <label>Logged by</label>
+        <input class="inp" placeholder="your name" value="${esc(a.rep)}"
+          oninput="S.ap.rep=this.value;localStorage.setItem('rep_name',this.value)">
       </div>
-      <div class="tiny dim">hot = asked about price, timeline or next steps · warm = asked a real question · cold = polite, took a leaflet</div>
+      <div class="tiny dim">${INTENT_HELP}</div>
       <button class="btn" onclick="savePerson()">Save encounter</button>`;
   }
 
@@ -1742,7 +1756,7 @@ async function savePerson() {
       leadId = lead.id;
     }
     await DB.addEncounter({
-      lead_id: leadId, conference_id: conf.id, rep: REP_NAME(),
+      lead_id: leadId, conference_id: conf.id, rep: a.rep.trim() || REP_NAME(),
       met_at: new Date().toISOString(), intent: a.intent,
       note: a.note, raw_note: a.note,
       name_as_given: a.known ? a.known.full_name : a.fields.name,

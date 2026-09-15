@@ -506,3 +506,12 @@ nav#nav{display:flex;flex-direction:column;flex:1;min-height:0}
 .status.src-Meetingnotes{background:#FBEFE4;color:#96551A}
 .status.src-AIsearch{background:#EDE8FA;color:#5B3FA8}
 .status.src-LinkedIn{background:#E3EDFD;color:#12509C}
+
+/* Cluster and gap cards: the title gets its own line so a long one cannot
+   shove the pill down and leave the row of cards misaligned. */
+.boxtitle{font-size:14px;font-weight:700;color:var(--ink);line-height:1.35;
+  min-height:2.7em;display:flex;align-items:flex-start}
+.boxmeta{align-items:center;gap:10px;margin:2px 0 10px;padding-bottom:9px;
+  border-bottom:1px solid var(--line)}
+.boxmeta .pill{flex:none}
+.box .boxrow:first-of-type{border-top:0}
