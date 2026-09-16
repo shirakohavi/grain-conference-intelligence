@@ -374,9 +374,65 @@ async function mergeInto(i) {
   } catch (e) { K.err = "Couldn't move that meeting across."; render(); }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   THE CRM
+
+   The desktop app syncs every contact and every meeting to HubSpot without
+   anyone asking it to. Field mode did not, which meant the one place a rep
+   actually captures leads was the one place they stopped at the database.
+   A booth is where the brief's "path into HubSpot" either exists or does
+   not, so it exists here too.
+
+   It fires when the rep moves on, not on every keystroke: at that moment
+   the note is written, the signal is picked and the segment is set, so one
+   push carries the finished thing rather than six pushes carrying drafts.
+   It never blocks the next person. A relay that is unreachable at a
+   conference centre, which is most of them, leaves the lead safe in
+   Postgres, and the desktop app pushes it later.
+   ══════════════════════════════════════════════════════════════════════ */
+function pushToCrm(lead, encounters, segment) {
+  const relay = localStorage.getItem("hubspot_relay");
+  if (!relay || !lead || !lead.work_email) return;
+  const name = (lead.full_name || "").trim();
+  const evs = encounters.slice().sort((a, b) => String(a.met_at).localeCompare(String(b.met_at)));
+  const fit = icpFit({ segment, title: lead.title, company: lead.company });
+  const body = {
+    properties: {
+      firstname: name.split(" ")[0] || null,
+      lastname: name.split(" ").slice(1).join(" ") || null,
+      email: lead.work_email, company: lead.company || null, jobtitle: lead.title || null,
+      grain_conference_touches: evs.length,
+      grain_icp_segment: segment || null,
+      grain_icp_fit: fit.unclassified ? null : fit.band,
+      grain_lead_status: evs.length > 1 ? "Developing" : "New",
+      grain_first_met_at: confName(evs[0] && evs[0].conference_id),
+      grain_last_met_at: confName(evs[evs.length - 1] && evs[evs.length - 1].conference_id),
+    },
+    notes: evs.filter(e => e.note).map(e => ({
+      timestamp: e.met_at,
+      body: `[${confName(e.conference_id)}] ${e.note}, logged by ${e.rep}`,
+    })),
+    draft: null, internalNote: null,
+  };
+  /* Deliberately not awaited by the caller: the rep is already typing the
+     next person's email. Failures are logged, never shown, because a CRM
+     that is down is not the rep's problem in the middle of a conversation. */
+  fetch(relay, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+    .catch(() => {});
+}
+
 function nextPerson() {
   clearTimeout(noteTimer);
   saveNote();
+  /* Everything the push needs, captured before the state is cleared. */
+  if (K.lead) {
+    const here = {
+      id: K.encounterId, conference_id: K.eventId,
+      rep: (K.team.find(t => t.id === K.repId) || {}).name || "Stand",
+      met_at: new Date().toISOString(), intent: K.note.intent, note: K.note.text.trim(),
+    };
+    pushToCrm(K.lead, [...K.history, here], K.note.segment);
+  }
   K.f = { email: "", name: "", company: "", title: "" };
   K.note = { text: "", intent: "warm", segment: "" };
   K.lead = null; K.encounterId = null; K.history = []; K.maybe = [];
