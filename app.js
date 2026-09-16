@@ -83,6 +83,18 @@ const repSelect = (value, onchange, { placeholder = "Choose your name" } = {}) =
    </select>`;
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* Display only. Reps type names, companies and roles in whatever case they
+   like on a show floor; the stored value is never changed, only how it reads.
+   Anything the rep already capitalised is left exactly as typed. */
+const ACRO = /^(ceo|cto|cfo|coo|cpo|cro|cmo|cio|cbo|ciso|vp|svp|evp|avp|gm|md|fx|psp|bnpl|hr|it|pm|bd|emea|apac|latam|us|uk|eu)$/i;
+const titleWord = w => ACRO.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1);
+const pname = s => { s = String(s ?? ""); return s === s.toLowerCase() ? s.split(/(\s+|-)/).map(titleWord).join("") : s; };
+const pco = s => { s = String(s ?? ""); return s === s.toLowerCase() ? s.charAt(0).toUpperCase() + s.slice(1) : s; };
+const prole = s => { s = String(s ?? ""); if (s !== s.toLowerCase()) return s;
+  const w = s.split(/(\s+)/).map(x => ACRO.test(x) ? x.toUpperCase() : x);
+  const i = w.findIndex(x => x.trim()); if (i >= 0 && !ACRO.test(w[i])) w[i] = w[i].charAt(0).toUpperCase() + w[i].slice(1);
+  return w.join(""); };
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 /* A discovered event may have no announced date yet. Blank is the honest
    answer; an invented date would quietly get planned around. */
@@ -123,8 +135,8 @@ function humanError(m) {
   return m;
 }
 const badge = r => r?.__demo
-  ? `<span class="badge">demo response</span>`
-  : `<span class="badge">live${AI.viaProxy() ? " · via n8n" : ""}</span>`;
+  ? `<span class="badge">Demo response</span>`
+  : `<span class="badge">Live${AI.viaProxy() ? " · via n8n" : ""}</span>`;
 
 /* ── shell ───────────────────────────────────────────────────────────── */
 const IC = {
@@ -290,8 +302,8 @@ function confTableHTML(list) {
               <div class="cell-name">${esc(c.name)}</div>
               ${(c.start && !c.datesConfirmed) || c.attendedBefore || c.aiSourced ? `<div class="row" style="gap:5px;margin-top:3px">
                 ${c.aiSourced ? `<span class="pill ai">AI sourced</span>` : ""}
-                ${c.start && !c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
-                ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
+                ${c.start && !c.datesConfirmed ? `<span class="pill warn">Dates estimated</span>` : ""}
+                ${c.attendedBefore ? `<span class="pill outline">Attended before</span>` : ""}
               </div>` : ""}
             </td>
             <td><div class="tags">${c.verticals.slice(0, 2).map(tag).join("")}${
@@ -658,7 +670,7 @@ function clearRepFilter(store) {
    unscored conference. */
 function icpPill(f, { ask = false } = {}) {
   if (!f) return `<span class="dim tiny">-</span>`;
-  if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this contact yet, so there is nothing to score against.">not set</span>`;
+  if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this contact yet, so there is nothing to score against.">Not set</span>`;
   return `<span class="pill icp ${f.band}${f.borrowed ? " borrowed" : ""}"${
     f.borrowed ? ` title="Segment borrowed from a colleague at the same company: ${esc(f.borrowed)}"` : ""
   }>${f.band}</span>${ask ? icpAsk(f) : ""}`;
@@ -699,7 +711,7 @@ function closeIcpWhy() {
 
 function sizePill(n) {
   const b = sizeBand(n);
-  if (!b) return `<span class="dim tiny">unknown</span>`;
+  if (!b) return `<span class="dim tiny">Unknown</span>`;
   return `<span class="pill size ${b.key}" title="${esc(b.means)}">${b.label}</span>`;
 }
 
@@ -997,7 +1009,7 @@ VIEWS_PLAN = () => {
         <div class="boxtitle">${esc(rshort(g.region))}</div>
         <div class="spread boxmeta">
           <span class="tiny dim">${g.events.length} event${g.events.length > 1 ? "s" : ""} worth attending</span>
-          <span class="pill warn">nothing booked</span></div>
+          <span class="pill warn">Nothing booked</span></div>
         ${g.events.slice(0, 3).map(({ c, s: sc }) => `
           <button class="boxrow" onclick="openConf('${c.id}')">
             <span class="tier ${sc.tier}">${sc.tier}</span>
@@ -1184,9 +1196,9 @@ VIEWS_CONTACTS = () => {
     <tbody>${rows.map(r => `
       <tr onclick="openContact('${r.id}')">
         <td>
-          <div class="cell-name">${esc(r.name)}${r.needsNudge
+          <div class="cell-name">${esc(pname(r.name))}${r.needsNudge
             ? `<span class="nudgedot" title="${esc(r.nudgeReason)}"></span>` : ""}</div>
-          <div class="tiny dim">${esc(r.title || "no role on file")}</div>
+          <div class="tiny dim">${esc(prole(r.title) || "No role on file")}</div>
         </td>
         <td onclick="event.stopPropagation()">
           <select class="status rel-${r.relationship} ${r.override ? "overridden" : ""}"
@@ -1195,8 +1207,8 @@ VIEWS_CONTACTS = () => {
             ${LEAD_STATUS.map(o => `<option${r.relationship === o ? " selected" : ""}>${o}</option>`).join("")}
           </select>
         </td>
-        <td class="tiny">${esc(r.company || "")}
-          ${r.changedCompany ? `<div class="pill warn">changed employer</div>` : ""}</td>
+        <td class="tiny">${esc(pco(r.company))}
+          ${r.changedCompany ? `<div class="pill warn">Changed employer</div>` : ""}</td>
         <td>${icpPill(r.icp, { ask: true })}</td>
         <td><b class="mono">${r.met}</b></td>
         <td onclick="event.stopPropagation()">
@@ -1232,7 +1244,7 @@ function groupedTable(rows) {
     <tbody>${groups.map(g => `
       <tr class="grp" onclick="toggleGroup('${g.key}')">
         <td><div class="grpname">
-          <i class="caret ${COPEN.has(g.key) ? "open" : ""}"></i>${esc(g.name)}
+          <i class="caret ${COPEN.has(g.key) ? "open" : ""}"></i>${esc(pco(g.name))}
           <span class="pill outline">${g.rows.length}</span>
         </div></td>
         <td><span class="pill rel-${g.best}">${esc(g.best)}</span>
@@ -1245,9 +1257,9 @@ function groupedTable(rows) {
       </tr>
       ${COPEN.has(g.key) ? g.rows.map(r => `
         <tr class="kid" onclick="openContact('${r.id}')">
-          <td><div class="cell-name">${esc(r.name)}${r.needsNudge
+          <td><div class="cell-name">${esc(pname(r.name))}${r.needsNudge
               ? `<span class="nudgedot" title="${esc(r.nudgeReason)}"></span>` : ""}</div>
-            <div class="tiny dim">${esc(r.title || "no role on file")}</div></td>
+            <div class="tiny dim">${esc(prole(r.title) || "No role on file")}</div></td>
           <td onclick="event.stopPropagation()">
             <select class="status rel-${r.relationship} ${r.override ? "overridden" : ""}"
               title="${esc(r.test)}" onchange="setRelationship('${r.leadId}', this.value)">
@@ -1559,7 +1571,7 @@ function accountBlock(c) {
   if (!a) return "";
   return `<div class="card pad acct">
     <div class="acctline">
-      <h4>${esc(a.name)}</h4>
+      <h4>${esc(pco(a.name))}</h4>
       ${a.segment ? `<span class="pill ${TAG_TONE(a.segment)}">${esc(a.segment)}</span>` : ""}
       <span class="acctstat">${a.people.length} people · ${a.events.length} event${
         a.events.length === 1 ? "" : "s"} · ${a.reps.length} rep${a.reps.length === 1 ? "" : "s"}</span>
@@ -1571,7 +1583,7 @@ function accountBlock(c) {
           ${/* The contact's own initials, not the rep who logged them. The
                tile is about the person at the company. */""}
           ${avatar({ id: o.id, initials: initialsOf(o.name), name: o.name })}
-          <span><b>${esc(o.name)}</b><span class="tiny dim">${esc(o.title || "no role on file")}</span></span>
+          <span><b>${esc(pname(o.name))}</b><span class="tiny dim">${esc(prole(o.title) || "No role on file")}</span></span>
         </button>`).join("")}
     </div>
 
@@ -1616,7 +1628,7 @@ function arcHTML(a) {
   /* Demo state is a badge, never a sentence. Nobody watching this should
      read the word demo in the middle of a sales brief. */
   return `
-    ${a.__demo ? `<div class="demobadge" title="No model key is set, so this brief is built from the rules alone. Add a key in Settings for the written version.">sample brief</div>` : ""}
+    ${a.__demo ? `<div class="demobadge" title="No model key is set, so this brief is built from the rules alone. Add a key in Settings for the written version.">Sample brief</div>` : ""}
     <div class="arcline"><span>Arc</span><p>${esc(a.arc || "")}</p></div>
     <div class="arcline"><span>Read</span><p>${esc(a.why || "")}</p></div>
     <div class="arcline"><span>Do</span><p><b>${esc(a.nudge || "")}</b></p></div>
@@ -1666,8 +1678,8 @@ function drawContact(c) {
   const met = c.encounters.filter(e => e.at <= NOW).length;
   drawer(`
     <div class="spread"><div>
-      <h3 style="margin:0">${esc(c.name)}</h3>
-      <div class="tiny dim" style="margin-top:3px">${esc(c.title)} · ${esc(c.company)}${c.email ? " · " + esc(c.email) : ""}</div>
+      <h3 style="margin:0">${esc(pname(c.name))}</h3>
+      <div class="tiny dim" style="margin-top:3px">${esc(prole(c.title))} · ${esc(pco(c.company))}${c.email ? " · " + esc(c.email) : ""}</div>
       <div class="row tiny" style="margin-top:8px;gap:6px;align-items:center">
         ${/* The segment decides 70 percent of the ICP fit, so a contact card
              that shows the fit and hides what produced it is asking to be
@@ -2352,8 +2364,8 @@ function drawAddPerson() {
           .sort((x, y) => x.at.localeCompare(y.at));
         return `<div class="card pad">
           <div class="spread" style="margin-bottom:8px">
-            <div><b>${esc(lead.full_name)}</b>
-              <div class="tiny dim">${esc(lead.title || "")}${lead.title ? " · " : ""}${esc(lead.company || "")}</div>
+            <div><b>${esc(pname(lead.full_name))}</b>
+              <div class="tiny dim">${esc(prole(lead.title))}${lead.title ? " · " : ""}${esc(pco(lead.company))}</div>
               <div class="tiny dim">${esc(lead.work_email || "no email on file")}</div></div>
             <span class="pill ${m.confidence >= 90 ? "blue" : "warn"}">${m.confidence}% · ${esc(m.reason)}</span>
           </div>
@@ -2404,7 +2416,7 @@ function drawAddPerson() {
       return `<label>${label}</label>
         <input class="inp" value="${esc(a.fields[k])}" oninput="S.ap.fields['${k}']=this.value">
         ${differs ? `<div class="tiny dim" style="margin:3px 0 0">On record: ${esc(recVal)}
-          <button class="linkbtn" onclick="S.ap.fields['${k}']=${JSON.stringify(recVal).replace(/"/g, "&quot;")};drawAddPerson()">use that</button></div>` : ""}`;
+          <button class="linkbtn" onclick="S.ap.fields['${k}']=${JSON.stringify(recVal).replace(/"/g, "&quot;")};drawAddPerson()">Use that</button></div>` : ""}`;
     };
     body = `
       <div class="alert good"><b>${esc(a.known.full_name)} is already on record.</b>

@@ -34,6 +34,17 @@ const K = {
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const el = () => document.getElementById("app");
+/* Display only, same rule as the desktop app: lower-case input reads with
+   capitals, anything already capitalised is left as typed. */
+const ACRO = /^(ceo|cto|cfo|coo|cpo|cro|cmo|cio|cbo|ciso|vp|svp|evp|avp|gm|md|fx|psp|bnpl|hr|it|pm|bd|emea|apac|latam|us|uk|eu)$/i;
+const pname = s => { s = String(s ?? ""); return s === s.toLowerCase()
+  ? s.split(/(\s+|-)/).map(w => ACRO.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)).join("") : s; };
+const pco = s => { s = String(s ?? ""); return s === s.toLowerCase() ? s.charAt(0).toUpperCase() + s.slice(1) : s; };
+const prole = s => { s = String(s ?? ""); if (s !== s.toLowerCase()) return s;
+  const w = s.split(/(\s+)/).map(x => ACRO.test(x) ? x.toUpperCase() : x);
+  const i = w.findIndex(x => x.trim()); if (i >= 0 && !ACRO.test(w[i])) w[i] = w[i].charAt(0).toUpperCase() + w[i].slice(1);
+  return w.join(""); };
+
 const dmy = iso => { const d = new Date(iso), p = n => String(n).padStart(2, "0");
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`; };
 
@@ -265,14 +276,14 @@ function renderCard() {
         <span class="k-saved" id="saved">${esc(K.saved)}</span>
       </div>
 
-      <h1>${esc(l.full_name || K.f.name)}</h1>
-      <p class="lede">${esc(l.company || K.f.company)}${(l.company || K.f.company) && l.title ? " · " : ""}${esc(l.title || "")}<br>
+      <h1>${esc(pname(l.full_name || K.f.name))}</h1>
+      <p class="lede">${esc(pco(l.company || K.f.company))}${(l.company || K.f.company) && l.title ? " · " : ""}${esc(prole(l.title))}<br>
         <span class="k-mono">${esc(l.work_email || K.f.email)}</span></p>
 
       ${K.maybe.length ? `<div class="k-maybe">
         <div class="k-histhead">Might be someone we know</div>
         ${K.maybe.map((m, i) => `<div class="k-maybrow">
-          <div><b>${esc(m.lead.full_name)}</b> <span class="k-histmeta">${esc(m.lead.company || "")} · ${esc(m.lead.work_email || "no email")}</span>
+          <div><b>${esc(pname(m.lead.full_name))}</b> <span class="k-histmeta">${esc(pco(m.lead.company))} · ${esc(m.lead.work_email || "no email")}</span>
             <div class="k-histmeta">${m.score}/100 · ${esc(m.reasons.join(", "))}</div></div>
           <button class="k-mergebtn" onclick="mergeInto(${i})">Same person</button>
         </div>`).join("")}
