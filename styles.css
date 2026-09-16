@@ -609,3 +609,32 @@ nav#nav{display:flex;flex-direction:column;flex:1;min-height:0}
 .relcell{display:flex;align-items:center;gap:7px}
 .relcell .verdict{font-size:10px;padding:2px 6px}
 .prio{font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ICP fit is one label. The tint says which way it leans without needing a
+   number beside it. "not set" is deliberately colourless: nobody has
+   assessed this person, which is not the same as a poor fit. */
+.pill.icp{font-weight:600}
+.pill.icp.High{background:#E4F4EC;color:#14664E}
+.pill.icp.Medium{background:#EAF1FE;color:#1B5FD9}
+.pill.icp.Low{background:#F1F3F9;color:#7A84A6}
+
+/* The four relationship states, as a real select because a rep can change
+   them. An override gets a left edge, so a row where a human disagreed with
+   the history is visible without reading the tooltip. */
+.status.rel-New{background:#F1F3F9;color:#7A84A6}
+.status.rel-Developing{background:#EAF1FE;color:#1B5FD9}
+.status.rel-Active{background:#E4F4EC;color:#14664E}
+.status.rel-Dormant{background:#FBF0DC;color:#8A5A0B}
+.status.overridden{box-shadow:inset 3px 0 0 var(--ink3)}
+
+/* Multi-select employee filter. A button, not a select, because a native
+   multiple select is unusable on a trackpad. */
+.repfilter{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  background:var(--panel);min-height:30px}
+.repfilter.on{border-color:var(--accent);color:var(--accent-ink)}
+.repfilter .av{width:20px;height:20px;font-size:9px}
+
+/* Demo state is a badge, never a sentence inside the brief. */
+.demobadge{display:inline-block;font-size:10px;text-transform:uppercase;
+  letter-spacing:.06em;font-weight:700;color:var(--ink3);
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px;margin-bottom:8px}

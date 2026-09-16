@@ -131,7 +131,7 @@ function renderForm() {
       <div class="k-field"><label>Company</label>
         <input value="${esc(K.f.company)}" oninput="K.f.company=this.value;refresh()"></div>
 
-      <div class="k-field"><label>Your role</label>
+      <div class="k-field"><label>Role</label>
         <input placeholder="Head of Treasury" value="${esc(K.f.title)}"
           oninput="K.f.title=this.value;refresh()"></div>
 
@@ -139,7 +139,11 @@ function renderForm() {
 
       <button class="k-go" id="go" ${ready() ? "" : "disabled"} onclick="lookUp()">Continue</button>
 
-      <div class="k-foot">${conf ? esc(conf.name) : ""}</div>
+      <button class="k-foot k-back" onclick="backToSetup()"
+        title="Change which event and which of us is logging">
+        ${conf ? esc(conf.name) : "No event"}${K.repId ? " · " + esc((K.team.find(t => t.id === K.repId) || {}).name || "") : ""}
+        <span class="k-backhint">change</span>
+      </button>
     </div></div>`;
 }
 
@@ -350,6 +354,15 @@ function nextPerson() {
   K.lead = null; K.encounterId = null; K.history = []; K.maybe = [];
   K.err = ""; K.saved = ""; K.busy = false;
   K.stage = "form"; render();
+}
+
+/* The footer is the way back. It is small and it names what it would change,
+   because the screen it sits on is the one a prospect is holding: it has to
+   be findable by the rep and uninteresting to a stranger. */
+function backToSetup() {
+  if (K.busy) return;
+  if (!confirm("Change the event or who is logging?")) return;
+  K.stage = "setup"; K.conferences = []; render();
 }
 
 /* ── Getting out. Five taps in the top-left corner. ─────────────────────── */

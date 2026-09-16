@@ -375,7 +375,14 @@ function nameTokens(s) {
 }
 function normCompany(s) {
   return strip(s || "").toLowerCase()
-    .replace(/\b(inc|ltd|llc|plc|gmbh|bv|nv|sa|ag|co|corp|company|group|holdings|technologies|tech|payments|labs)\b/g, "")
+    // A rep types "monday", the tablet gets "monday.com", the CRM has
+    // "Monday.com Ltd". Strip the domain tail before anything else or the
+    // same employer reads as three and a job change gets invented.
+    .replace(/\.(com|co\.[a-z]{2}|co|io|ai|net|org|app|dev|xyz|[a-z]{2})(?=\s|$)/g, " ")
+    // "N.V." and "S.p.A." become nv and spa so the suffix list below can see
+    // them as words rather than leaving them welded to the name.
+    .replace(/\./g, "")
+    .replace(/\b(inc|ltd|limited|llc|lp|plc|gmbh|bv|nv|ab|oy|as|sa|spa|ag|kk|pte|pty|co|corp|corporation|company|group|holding|holdings|technologies|technology|tech|payments|solutions|labs)\b/g, " ")
     .replace(/[^a-z0-9]/g, "");
 }
 
@@ -526,45 +533,54 @@ function arcSignals(list) {
   const usualGapDays = n > 1 ? Math.round(spanDays / (n - 1)) : null;
   const overdue = usualGapDays != null && daysSince > usualGapDays * 2;
 
-  /* Five verdicts, each one rule, each checkable by hand. The rule layer
-     decides WHICH of these it is. The model never does, which is what keeps
-     the answer reproducible. Order matters: the first rule that fires wins. */
+  /* Four states, each one rule, first match wins, all of them checkable by
+     hand. The rule layer decides which one. A model never does, which is what
+     keeps the label on screen reproducible. A rep can override it, and the
+     override is stored separately so the two can visibly disagree.
+
+       New        first interaction
+       Active     clear commercial intent at the most recent meeting
+       Developing repeat interactions with movement
+       Dormant    previous engagement, no momentum now
+
+     Dormant carries the case the brief actually asks about. "No momentum"
+     means nothing MOVING, not nothing recent: someone who has come to four
+     conferences, been polite every time and never once named a budget or a
+     date has no momentum even if the last meeting was Tuesday. */
   let verdict, tone, test;
   if (n === 1) {
     verdict = "New"; tone = "neutral";
-    test = "Met once.";
-  } else if (overdue && everHot) {
-    verdict = "Gone quiet"; tone = "bad";
-    test = `Was hot at some point, and silent for ${daysSince} days against a usual gap of ${usualGapDays}.`;
+    test = `First interaction, at ${list[0].confName || "their first event"}.`;
   } else if (overdue) {
-    verdict = "Gone quiet"; tone = "bad";
-    test = `Silent for ${daysSince} days against a usual gap of ${usualGapDays}.`;
+    verdict = "Dormant"; tone = "bad";
+    test = `Silent for ${daysSince} days against their usual gap of ${usualGapDays}.`;
   } else if (n >= 3 && !everHot) {
-    verdict = "Stuck"; tone = "bad";
+    verdict = "Dormant"; tone = "bad";
     test = `Met ${n} times and never once named a budget or a date.`;
-  } else if (everHot && ranks[n - 1] < 3) {
-    verdict = "Cooling"; tone = "bad";
-    test = "Was hot at some point, is not now.";
-  } else if (delta > 0) {
-    verdict = "Warming"; tone = "good";
-    test = `Went ${list[0].intent} to ${list[n - 1].intent} and is still inside their usual gap.`;
   } else if (ranks[n - 1] === 3) {
-    verdict = "Warming"; tone = "good";
-    test = "Hot at the most recent meeting.";
+    verdict = "Active"; tone = "good";
+    test = "Named a budget or a date at the most recent meeting.";
+  } else if (delta > 0) {
+    verdict = "Developing"; tone = "good";
+    test = `Went ${list[0].intent} to ${list[n - 1].intent} across ${n} meetings.`;
+  } else if (everHot) {
+    verdict = "Developing"; tone = "neutral";
+    test = "Was active at some point and is still in conversation, but has cooled.";
   } else {
-    verdict = "Flat"; tone = "neutral";
-    test = `${n} meetings, no movement either way.`;
+    verdict = "Developing"; tone = "neutral";
+    test = `${n} meetings, still talking, nothing named yet.`;
   }
 
   /* When to interrupt the rep. The brief's warning is that a nudge which is
-     always there is noise and one that is never there is invisible, so the
-     answer is neither: a nudge appears only when something happened. Warming
-     and Flat contacts get the facts and silence, which is most of the list. */
+     always there is noise and one that is never there is invisible, so it is
+     neither: a nudge appears only when something happened. A Developing
+     contact inside their normal rhythm gets the facts and silence, which is
+     most of the list. */
   let nudgeReason = "";
   if (changedCompany) nudgeReason = "Changed employer since you met";
-  else if (verdict === "Gone quiet") nudgeReason = `Overdue by their own rhythm, ${daysSince} days against ${usualGapDays}`;
-  else if (verdict === "Stuck") nudgeReason = `${n} meetings, never once hot`;
-  else if (verdict === "Cooling") nudgeReason = "Was hot, is not now";
+  else if (overdue) nudgeReason = `Overdue by their own rhythm, ${daysSince} days against ${usualGapDays}`;
+  else if (verdict === "Dormant") nudgeReason = `${n} meetings, nothing named yet`;
+  else if (everHot && ranks[n - 1] < 3) nudgeReason = "Was active, is not now";
 
   return {
     verdict, tone, test, spanDays, daysSince, changedCompany, repsInvolved,
@@ -574,81 +590,65 @@ function arcSignals(list) {
     pattern: verdict,
     touches: n,
     velocity: n > 1 ? +(delta / (spanDays / 30 || 1)).toFixed(2) : 0,
-    priority: priorityScore({ ranks, n, everHot, delta, list, overdue }),
   };
 }
 
-/* ── PRIORITY: WHO DO I CALL FIRST ─────────────────────────────────────────
-   Deliberately a different question from the verdict above, and kept a
-   different number because of it.
+/* ── ICP FIT: IS THIS A PROSPECT WORTH THE EFFORT ──────────────────────────
+   Deliberately a different question from the relationship below, and kept
+   apart from it on purpose:
 
-     verdict  = what is this relationship DOING            (motion)
-     priority = is this person worth the effort right now  (worth)
+     ICP fit      is this a valuable Grain prospect        (who they are)
+     Relationship how is our relationship progressing      (what it is doing)
 
-   Squashing those together is the trap: seniority and ICP fit are facts
-   about the PERSON, so a perfect-fit senior buyer who has attended four
+   Merging them is the trap. A perfect-fit senior buyer who has attended four
    events and never named a budget would score high on a combined number and
-   hide behind it. Here they lift the call order and leave the verdict alone,
-   so that person reads "Stuck, priority 71": worth calling, not warming.
+   hide behind it. Separated, that person reads "High ICP fit, Dormant",
+   which is the honest and useful sentence: worth chasing, not progressing.
 
-   Five components, 100 points, all arithmetic:
-     signal now      30   what they are today
-     trajectory      25   whether it is moving, not how often we have met
-     ICP fit         20   is their company the kind Grain sells to
-     seniority       15   can they sign
-     recency         10   against their own rhythm, not a fixed 90 days     */
+   Company fit 70, role fit 30, banded 80+ High, 50-79 Medium, under 50 Low.
+   One label shows. The arithmetic is available but is not a second badge. */
 
-/* Titles are free text written by a rep on a show floor, so this matches on
-   the words that actually appear rather than pretending there is a taxonomy. */
-const SENIORITY_BANDS = [
-  [/\b(founder|co-?founder|ceo|cfo|coo|cto|chief|owner|president|partner)\b/i, 15],
-  [/\b(vp|vice.president|svp|evp)\b/i, 13],
-  [/\b(head of|director|gm|general manager)\b/i, 11],
-  [/\b(lead|principal|senior manager)\b/i, 8],
-  [/\b(manager|pm|product manager)\b/i, 6],
+/* Grain's own list of who they sell to, taken from their LinkedIn rather
+   than invented. Treasury and PSP sit top because both are the person who
+   actually carries the FX risk. */
+const SEGMENT_FIT = {
+  "PSP": 100, "Treasury": 100, "Marketplace": 90, "Travel": 90,
+  "BNPL": 80, "Payroll": 70, "Stablecoin": 55, "Other": 20,
+};
+
+/* Titles are free text written by a rep on a show floor, so this matches the
+   words that actually appear rather than pretending there is a taxonomy. */
+const ROLE_BANDS = [
+  [/\b(founder|co-?founder|ceo|cfo|coo|cto|chief|owner|president|managing director)\b/i, 100],
+  [/\b(vp|vice.president|svp|evp)\b/i, 90],
+  [/\b(head of|director|gm|general manager)\b/i, 78],
+  [/\b(lead|principal|senior manager)\b/i, 55],
+  [/\b(manager|pm|product manager|owner)\b/i, 45],
+  [/\b(analyst|associate|specialist|coordinator|intern)\b/i, 25],
 ];
-const seniorityPoints = title => {
+const roleFit = title => {
   const t = String(title || "");
-  for (const [re, pts] of SENIORITY_BANDS) if (re.test(t)) return pts;
-  return t ? 4 : 2;                       // a title we cannot read still beats none
+  if (!t.trim()) return 35;                 // no title is unknown, not junior
+  for (const [re, pts] of ROLE_BANDS) if (re.test(t)) return pts;
+  return 45;
 };
 
-/* Grain's own words for who they sell to, from their LinkedIn. Treasury and
-   PSP sit top because both are the person who actually carries the FX risk. */
-const SEGMENT_POINTS = {
-  "PSP": 20, "Treasury": 20, "Marketplace": 18, "Travel": 18,
-  "BNPL": 16, "Payroll": 14, "Stablecoin": 12, "Other": 6,
-};
-
-function priorityScore({ ranks, n, everHot, delta, list, overdue }) {
-  const now = ranks[n - 1];
-  const signal = now === 3 ? 30 : now === 2 ? 18 : 6;
-
-  /* Trajectory, not meeting count. Counting meetings rewards the person who
-     keeps turning up and never buys, which is the exact failure the brief
-     asks the tool to avoid. */
-  let trajectory;
-  if (n === 1) trajectory = 12;                       // nothing to read yet, sit in the middle
-  else if (delta > 0) trajectory = 25;
-  else if (delta < 0) trajectory = 6;
-  else if (!everHot && n >= 3) trajectory = 0;        // met three times, never once hot
-  else trajectory = 12;
-
-  const latest = list[n - 1] || {};
-  const icp = SEGMENT_POINTS[latest.segment] ?? 10;
-  const seniority = seniorityPoints(latest.title);
-  const recency = overdue ? 0 : 10;
-
-  return Math.max(0, Math.min(100, signal + trajectory + icp + seniority + recency));
-}
-
-/* The bands exist so a rep can sort and stop reading. They are call order,
-   not a verdict: the verdict is the label next to them. */
-const PRIORITY_BANDS = [
-  { min: 80, label: "Call first" },
-  { min: 60, label: "This month" },
-  { min: 40, label: "Keep warm" },
-  { min: 0,  label: "Low signal" },
+const ICP_BANDS = [
+  { min: 80, band: "High" },
+  { min: 50, band: "Medium" },
+  { min: 0,  band: "Low" },
 ];
-const priorityBand = p => PRIORITY_BANDS.find(b => p >= b.min) || PRIORITY_BANDS[3];
 
+function icpFit({ segment, title, company } = {}) {
+  const co = SEGMENT_FIT[segment];
+  const companyFit = co == null ? 45 : co;   // unclassified is a middling guess
+  const rf = roleFit(title);
+  const score = Math.round(companyFit * 0.7 + rf * 0.3);
+  const band = (ICP_BANDS.find(b => score >= b.min) || ICP_BANDS[2]).band;
+  return {
+    score, band, companyFit, roleFit: rf,
+    why: `${segment || "Segment not set"} ${companyFit} at 70 percent, `
+       + `${title || "no title"} ${rf} at 30 percent.`,
+    unclassified: co == null,
+  };
+}

@@ -94,3 +94,12 @@ body.kiosk{background:#2B3674;min-height:100vh;margin:0;
 .k-chip.sig-hot.on{border-color:#C0392B;background:#FCEEEC;color:#C0392B}
 .k-chip.sig-warm.on{border-color:#B7791F;background:#FDF6E7;color:#8A6420}
 .k-chip.sig-cold.on{border-color:#2F6FD0;background:#E9F0FE;color:#2F6FD0}
+
+/* The way back to event and rep. Small on purpose: the rep needs to find it,
+   a prospect holding the tablet has no reason to press it, and it confirms
+   before it does anything. */
+.k-back{background:none;border:0;cursor:pointer;font:inherit;color:inherit;
+  display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px}
+.k-back:hover{background:rgba(43,54,116,.05)}
+.k-backhint{font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  opacity:.55;border:1px solid currentColor;border-radius:4px;padding:1px 5px}

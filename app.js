@@ -156,7 +156,7 @@ function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
    VIEW 1, CONFERENCES.  Decide what's worth attending.
    REDESIGNED: Quiet inline filter bar instead of boxed inputs.
    ══════════════════════════════════════════════════════════════════════ */
-const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", size: "", status: "" };
+const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", size: "", status: "", reps: [] };
 
 /* One dropdown builder for the whole filter bar. Every filter is a select, so
    nothing on this page is a row of buttons pretending to be a control. */
@@ -214,6 +214,7 @@ VIEWS_CONF = () => {
   if (F.tier) list = list.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
   if (F.vertical) list = list.filter(x => x.c.verticals.includes(F.vertical));
   if (F.size) list = list.filter(x => (sizeBand(x.c.audienceSize) || {}).key === F.size);
+  if (F.reps.length) list = list.filter(x => F.reps.some(id => (x.c.covering || []).includes(id)));
   if (F.status) list = list.filter(x => x.c.status === F.status);
   if (F.q) { const q = F.q.toLowerCase();
     list = list.filter(x => (x.c.name + x.c.city + x.c.country + x.c.verticals.join()).toLowerCase().includes(q)); }
@@ -240,6 +241,7 @@ VIEWS_CONF = () => {
     ${FSEL("vertical", "All verticals", verts)}
     ${FSEL("status", "All statuses", STATUSES)}
     ${FSEL("size", "Any size", SIZE_BANDS.map(b => [b.key, b.label]))}
+    ${repFilter("F")}
     ${FSEL("tier", "All tiers", [["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["?", "Not scored"]])}
     <div class="filter-stat">${list.length} of ${CONFERENCES.length}</div>
   </div>
@@ -320,6 +322,7 @@ function reweight(k, v) {
     if (F.tier) l = l.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
     if (F.vertical) l = l.filter(x => x.c.verticals.includes(F.vertical));
     if (F.size) l = l.filter(x => (sizeBand(x.c.audienceSize) || {}).key === F.size);
+    if (F.reps.length) l = l.filter(x => F.reps.some(id => (x.c.covering || []).includes(id)));
     if (F.status) l = l.filter(x => x.c.status === F.status);
     if (F.q) { const q = F.q.toLowerCase();
       l = l.filter(x => (x.c.name + x.c.city + x.c.country + x.c.verticals.join()).toLowerCase().includes(q)); }
@@ -567,6 +570,68 @@ function peopleCell(ids, { empty = "Nobody yet" } = {}) {
     people.length > 3 ? `<span class="av more">+${people.length - 3}</span>` : ""}</span>`;
 }
 
+/* ── THE EMPLOYEE FILTER ───────────────────────────────────────────────
+   Multi-select, because "who is covering Q4" is almost never one person.
+   A plain <select multiple> is unusable on a laptop trackpad, so this is a
+   button that opens the same popover pattern the other pickers use, and the
+   button itself shows the faces currently filtered on. */
+function repFilter(store) {
+  const sel = (store === "CF" ? CF.reps : F.reps) || [];
+  const label = sel.length
+    ? `<span class="avrow">${TEAM.filter(t => sel.includes(t.id)).slice(0, 3).map(t => avatar(t)).join("")}${
+        sel.length > 3 ? `<span class="av more">+${sel.length - 3}</span>` : ""}</span>`
+    : `<span>Anyone</span>`;
+  return `<button class="filter-control repfilter ${sel.length ? "on" : ""}"
+    onclick="openRepFilter('${store}', event)">${label}</button>`;
+}
+
+function openRepFilter(store, ev) {
+  ev.stopPropagation();
+  closeRepFilter();
+  const sel = (store === "CF" ? CF.reps : F.reps) || [];
+  const r = ev.currentTarget.getBoundingClientRect();
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="actscrim" onclick="closeRepFilter()"></div>
+     <div class="actpop" id="repfilterpop" style="top:${Math.min(r.bottom + 6, innerHeight - 340)}px;left:${r.left}px">
+       <div class="actpop-h">Filter by who</div>
+       ${TEAM.map(t => `
+         <label class="actopt">
+           <input type="checkbox" ${sel.includes(t.id) ? "checked" : ""}
+             onchange="toggleRepFilter('${store}', '${t.id}', this.checked)">
+           ${avatar(t)}<span>${esc(t.name)}</span>
+         </label>`).join("")}
+       <div class="actpop-f"><button class="linkbtn" onclick="clearRepFilter('${store}')">Show everyone</button></div>
+     </div>`);
+}
+function closeRepFilter() {
+  document.getElementById("repfilterpop")?.remove();
+  document.querySelector(".actscrim")?.remove();
+}
+function toggleRepFilter(store, id, on) {
+  const target = store === "CF" ? CF : F;
+  const cur = target.reps || [];
+  target.reps = on ? [...cur, id] : cur.filter(x => x !== id);
+  const pop = document.getElementById("repfilterpop");
+  render();
+  if (pop) document.body.appendChild(pop);           // survive the re-render
+}
+function clearRepFilter(store) {
+  (store === "CF" ? CF : F).reps = [];
+  closeRepFilter(); render();
+}
+
+/* ICP fit shows one label, not a label and a number. The arithmetic is in
+   the tooltip and the drawer for anyone who wants to audit it.
+
+   A prospect whose segment nobody has set is NOT "Low": that would be a
+   verdict we have not earned. It reads as unknown, same principle as an
+   unscored conference. */
+function icpPill(f) {
+  if (!f) return `<span class="dim tiny">-</span>`;
+  if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this lead yet, so this is a guess from the role alone.">not set</span>`;
+  return `<span class="pill icp ${f.band}" title="${esc(f.why)} Scores ${f.score} out of 100.">${f.band}</span>`;
+}
+
 function sizePill(n) {
   const b = sizeBand(n);
   if (!b) return `<span class="dim tiny">unknown</span>`;
@@ -660,10 +725,14 @@ VIEWS_PLAN = () => {
   const scoredAll = fut.map(c => ({ c, s: scoreConference(c, S.weights) }))
                        .sort((a, b) => a.c.start.localeCompare(b.c.start));
 
-  const shown = scoredAll.filter(({ c, s }) =>
+  let shown = scoredAll.filter(({ c, s }) =>
     S.planFilter === "all" ? true
     : S.planFilter === "booked" ? S.attending.has(c.id)
     : (S.attending.has(c.id) || (!s.unscored && s.total >= 65)));
+  /* Narrowing the calendar to one or two people answers "what does Noa's
+     year look like", which is the question the coverage panel below raises
+     and the calendar could not previously answer. */
+  if (F.reps.length) shown = shown.filter(({ c }) => F.reps.some(id => (c.covering || []).includes(id)));
 
   const clashes = findConflicts(fut.filter(c => !scoreConference(c, S.weights).unscored), S.weights);
   const clashIds = new Set(clashes.flat().map(x => x.c.id));
@@ -720,6 +789,7 @@ VIEWS_PLAN = () => {
           <option value="year"${S.planScope === "year" ? " selected" : ""}>Whole year</option>
           ${monthKeys.map(k => `<option value="${k}"${S.planScope === k ? " selected" : ""}>${monthLong(k)}</option>`).join("")}
         </select>
+        ${repFilter("F")}
         <select class="filter-control" onchange="S.planFilter=this.value;render()">
           <option value="worth"${S.planFilter === "worth" ? " selected" : ""}>Worth attending</option>
           <option value="booked"${S.planFilter === "booked" ? " selected" : ""}>Booked only</option>
@@ -905,18 +975,28 @@ VIEWS_PLAN = () => {
      - a directory you can search and filter
      - the HubSpot handoff state
    Sortable columns, dropdown filters, click a row for the full history. */
-const CF = { q: "", conf: "", segment: "", signal: "", lead: "", hubspot: "", nudge: "" };
-const CSORT = { key: "priority", dir: -1 };
+const CF = { q: "", conf: "", icp: "", rel: "", reps: [], nudge: "" };
+const CSORT = { key: "last", dir: -1 };
 
+/* One column, not two. An earlier build had a human "lead status" beside a
+   computed "relationship" and they fought: both started at New, both looked
+   like the same question, and a rep reading the row had to work out which
+   one to believe.
 
-/* Where a lead is in OUR pipeline. It stops at the handoff on purpose: once
-   they are in HubSpot, HubSpot's stages are the truth, and two systems holding
-   a different answer is worse than one system holding none. */
-const LEAD_STATUS = ["New", "Contacted", "Qualified", "Not a fit"];
+   So there is one answer. The tool sets it from the meeting history, the rep
+   can change it, and an override is stored separately from the rule's answer
+   so the row can show that a human disagreed rather than losing the fact.
+
+     New        first interaction
+     Developing repeat interactions with movement
+     Active     clear commercial intent at the most recent meeting
+     Dormant    previous engagement, no momentum now                     */
+const LEAD_STATUS = ["New", "Developing", "Active", "Dormant"];
+const REL_STATES = LEAD_STATUS;
 
 /* The same three tests field mode puts on its chips. A signal a rep has to
-   feel is a signal two reps will disagree about, and this field decides
-   whether HubSpot gets the lead on its own. */
+   feel is a signal two reps will disagree about. It is the per-meeting input
+   that decides whether a relationship reads Active, and it is not a column. */
 const INTENT_HELP = "hot = named a budget or a date · warm = told us their FX problem · cold = no problem named";
 
 function contactRows() {
@@ -930,21 +1010,24 @@ function contactRows() {
     // meeting, and showing it as "-35d ago" is just wrong.
     const past = c.encounters.filter(e => e.at <= NOW);
     const last = past[past.length - 1] || null;
+    const leadId = c.encounters[c.encounters.length - 1].leadId;
+    const lead = LEADS.find(l => l.id === leadId) || {};
+    const override = lead.relationship_pattern || null;
     return {
-      ...c, last,
-      // Count meetings that have happened, so the number, the date and the
-      // summary all agree.
+      ...c, last, leadId,
       met: past.length,
       daysAgo: last ? Math.floor((Date.now() - new Date(last.at)) / 86400000) : null,
-      signal: c.encounters[c.encounters.length - 1].intent,
+      icp: icpFit({ segment: c.segment, title: c.title, company: c.company }),
+      /* The rule's answer is kept even when a rep overrides it, so the row
+         can say a human disagreed rather than silently replacing the fact. */
+      ruled: c.verdict,
+      override,
+      relationship: override || c.verdict,
       confs: [...new Set(c.encounters.map(e => ({ id: e.confId, name: e.confName })).map(x => JSON.stringify(x)))]
         .map(x => JSON.parse(x)),
       /* Who spoke to them. Derived, never typed: it is a fact the encounters
          already hold, so it cannot drift out of step with the history. */
       repIds: [...new Set(c.encounters.map(e => (teamByName(e.rep) || {}).id).filter(Boolean))],
-      leadId: c.encounters[c.encounters.length - 1].leadId,
-      leadStatus: c.encounters[c.encounters.length - 1].leadStatus || "New",
-      push: pushState(c),
       needsReview: c.encounters.some(e => flagged.has(e.leadId)),
     };
   });
@@ -952,35 +1035,30 @@ function contactRows() {
 
 VIEWS_CONTACTS = () => {
   let rows = contactRows();
-  const allConfs = [...new Set(rows.flatMap(r => r.confs))].sort();
-  const allSegs = [...new Set(rows.map(r => r.segment).filter(Boolean))].sort();
+  const allConfs = [...new Set(rows.flatMap(r => r.confs.map(c => c.name)))].sort();
 
-  if (CF.conf) rows = rows.filter(r => r.confs.includes(CF.conf));
-  if (CF.segment) rows = rows.filter(r => r.segment === CF.segment);
-  if (CF.signal) rows = rows.filter(r => r.signal === CF.signal);
+  if (CF.conf) rows = rows.filter(r => r.confs.some(c => c.name === CF.conf));
+  if (CF.icp) rows = rows.filter(r => r.icp.band === CF.icp && !r.icp.unclassified);
+  if (CF.rel) rows = rows.filter(r => r.relationship === CF.rel);
   if (CF.nudge) rows = rows.filter(r => r.needsNudge);
-  if (CF.lead) rows = rows.filter(r => r.leadStatus === CF.lead);
-  /* The table shows two states now, pushed or needs a push, so the filter
-     offers the same two. "pushed" covers every row that goes on its own. */
-  if (CF.hubspot) rows = rows.filter(r => CF.hubspot === "review" ? r.needsReview
-    : CF.hubspot === "manual" ? r.push === "manual" : r.push !== "manual");
+  if (CF.reps.length) rows = rows.filter(r => CF.reps.some(id => r.repIds.includes(id)));
   if (CF.q) { const q = CF.q.toLowerCase();
-    rows = rows.filter(r => (r.name + r.company + r.title + (r.email || "") + r.confs.join()).toLowerCase().includes(q)); }
+    rows = rows.filter(r => (r.name + r.company + r.title + (r.email || "")
+      + r.confs.map(c => c.name).join()).toLowerCase().includes(q)); }
 
+  const REL_RANK = { Active: 4, Developing: 3, New: 2, Dormant: 1 };
   const val = (r, k) => k === "name" ? r.name.toLowerCase()
     : k === "company" ? (r.company || "").toLowerCase()
     : k === "touches" ? r.met
     : k === "last" ? (r.last ? r.last.at : "")
-    : k === "signal" ? ({ hot: 3, warm: 2, cold: 1 }[r.signal] || 0)
-    : k === "priority" ? r.priority
-    : r.priority;
+    : k === "icp" ? r.icp.score
+    : k === "rel" ? (REL_RANK[r.relationship] || 0)
+    : (r.last ? r.last.at : "");
   rows.sort((a, b) => { const x = val(a, CSORT.key), y = val(b, CSORT.key);
     return (x < y ? -1 : x > y ? 1 : 0) * CSORT.dir; });
 
   const TH = (k, label, w) => `<th ${w ? `style="width:${w}"` : ""} class="sortable ${CSORT.key === k ? "sorted" : ""}"
     onclick="sortContacts('${k}')">${label}${CSORT.key === k ? (CSORT.dir < 0 ? " ↓" : " ↑") : ""}</th>`;
-
-  const reviewCount = rows.filter(r => r.needsReview).length;
 
   return `
   <div class="head">
@@ -999,76 +1077,60 @@ VIEWS_CONTACTS = () => {
       <option value="">All events</option>
       ${allConfs.map(c => `<option${CF.conf === c ? " selected" : ""}>${esc(c)}</option>`).join("")}
     </select>
-    <select class="filter-control" onchange="CF.segment=this.value;render()">
-      <option value="">All segments</option>
-      ${allSegs.map(c => `<option${CF.segment === c ? " selected" : ""}>${esc(c)}</option>`).join("")}
+    ${repFilter("CF")}
+    <select class="filter-control" onchange="CF.icp=this.value;render()">
+      <option value="">Any ICP fit</option>
+      ${["High", "Medium", "Low"].map(c => `<option${CF.icp === c ? " selected" : ""}>${c}</option>`).join("")}
     </select>
-    <select class="filter-control" onchange="CF.signal=this.value;render()">
-      <option value="">All signals</option>
-      ${["hot", "warm", "cold"].map(c => `<option${CF.signal === c ? " selected" : ""}>${c}</option>`).join("")}
-    </select>
-    <select class="filter-control" onchange="CF.lead=this.value;render()">
-      <option value="">All lead statuses</option>
-      ${LEAD_STATUS.map(c => `<option${CF.lead === c ? " selected" : ""}>${c}</option>`).join("")}
+    <select class="filter-control" onchange="CF.rel=this.value;render()">
+      <option value="">Any lead status</option>
+      ${LEAD_STATUS.map(c => `<option${CF.rel === c ? " selected" : ""}>${c}</option>`).join("")}
     </select>
     <select class="filter-control" onchange="CF.nudge=this.value;render()">
       <option value="">Everyone</option>
       <option value="1"${CF.nudge ? " selected" : ""}>Needs a nudge (${rows.filter(r => r.needsNudge).length})</option>
-    </select>
-    <select class="filter-control" onchange="CF.hubspot=this.value;render()">
-      <option value="">All HubSpot states</option>
-      <option value="pushed"${CF.hubspot === "pushed" ? " selected" : ""}>Pushed</option>
-      <option value="manual"${CF.hubspot === "manual" ? " selected" : ""}>Needs a push</option>
-      ${reviewCount ? `<option value="review"${CF.hubspot === "review" ? " selected" : ""}>Identity unclear (${reviewCount})</option>` : ""}
     </select>
     <div class="filter-stat">${rows.length} people</div>
   </div>
 
   <div class="card"><div class="pad tablewrap" style="padding-bottom:6px"><table class="fixed">
     <thead><tr>
-      ${TH("name", "Name", "152px")}
-      <th style="width:108px">Lead status</th>
-      ${TH("company", "Company", "100px")}
-      ${TH("priority", "Relationship", "132px")}
-      <th style="width:120px">Work email</th>
-      <th style="width:92px">Spoke to them</th>
-      ${TH("touches", "Met", "42px")}
-      <th style="width:140px">Where</th>
-      ${TH("last", "Last seen", "114px")}
-      ${TH("signal", "Signal", "64px")}
-      <th style="width:106px">HubSpot</th>
+      ${TH("name", "Name", "182px")}
+      ${TH("rel", "Lead status", "132px")}
+      ${TH("company", "Company", "130px")}
+      ${TH("icp", "ICP fit", "92px")}
+      ${TH("touches", "Met", "46px")}
+      ${TH("last", "Where and last seen", "182px")}
+      <th style="width:104px">Spoke to them</th>
     </tr></thead>
     <tbody>${rows.map(r => `
       <tr onclick="openContact('${r.id}')">
         <td>
           <div class="cell-name">${esc(r.name)}${r.needsNudge
             ? `<span class="nudgedot" title="${esc(r.nudgeReason)}"></span>` : ""}</div>
-          <div class="tiny dim">${esc(r.title || "")}</div>
+          <div class="tiny dim">${esc(r.title || "no role on file")}</div>
         </td>
         <td onclick="event.stopPropagation()">
-          <select class="status ls-${r.leadStatus.replace(/\s/g, "")}" onchange="setLeadStatus('${r.leadId}', this.value)">
-            ${LEAD_STATUS.map(o => `<option${r.leadStatus === o ? " selected" : ""}>${o}</option>`).join("")}
+          <select class="status rel-${r.relationship} ${r.override ? "overridden" : ""}"
+            title="${esc(r.override ? "Set by a rep. The history says " + r.ruled + ": " + r.test : r.test)}"
+            onchange="setRelationship('${r.leadId}', this.value)">
+            ${LEAD_STATUS.map(o => `<option${r.relationship === o ? " selected" : ""}>${o}</option>`).join("")}
           </select>
         </td>
         <td class="tiny">${esc(r.company || "")}
           ${r.changedCompany ? `<div class="pill warn">changed employer</div>` : ""}</td>
-        <td><div class="relcell">
-          <span class="verdict v-${r.verdict.replace(/\s/g, "")}" title="${esc(r.test)}">${esc(r.verdict)}</span>
-          <b class="mono prio" title="Call order out of 100: ${esc(priorityBand(r.priority).label)}">${r.priority}</b>
-        </div></td>
-        <td class="email">${r.email ? esc(r.email) : "no email on file"}</td>
-        <td>${peopleCell(r.repIds, { empty: "-" })}</td>
+        <td>${icpPill(r.icp)}</td>
         <td><b class="mono">${r.met}</b></td>
-        <td onclick="event.stopPropagation()"><div class="tags">
-          ${r.confs.slice(0, 2).map(c => `<button class="pill conftag" title="${esc(c.name)}" onclick="openConfFrom('${c.id}')">${esc(c.name)}</button>`).join("")}
-          ${r.confs.length > 2 ? `<span class="pill outline">+${r.confs.length - 2}</span>` : ""}
-        </div></td>
-        <td class="tiny muted nowrap">${r.last
-          ? `${fmtDMY(r.last.at)} <span class="dim">· ${r.daysAgo}d</span>`
-          : `<span class="dim">not met yet</span>`}</td>
-        <td><span class="sig ${r.signal}">${r.signal}</span></td>
-        <td onclick="${r.push === "manual" ? `event.stopPropagation();pushOne('${r.id}')` : "event.stopPropagation()"}">
-          ${PUSH_LABEL[r.push]}</td>
+        <td onclick="event.stopPropagation()">
+          <div class="tags">
+            ${r.confs.slice(0, 2).map(c => `<button class="pill conftag" title="${esc(c.name)}" onclick="openConfFrom('${c.id}')">${esc(c.name)}</button>`).join("")}
+            ${r.confs.length > 2 ? `<span class="pill outline">+${r.confs.length - 2}</span>` : ""}
+          </div>
+          <div class="tiny dim" style="margin-top:3px">${r.last
+            ? `${fmtDMY(r.last.at)} · ${r.daysAgo}d ago`
+            : "not met yet"}</div>
+        </td>
+        <td>${peopleCell(r.repIds, { empty: "-" })}</td>
       </tr>`).join("")}
     </tbody></table>
     ${rows.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
@@ -1078,13 +1140,20 @@ VIEWS_CONTACTS.after = () => {
   const e = document.getElementById("ctq");
   if (e && CF.q) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
 };
-async function setLeadStatus(leadId, status) {
-  const l = LEADS.find(x => x.id === leadId); if (l) l.status = status;
-  ENCOUNTERS.forEach(e => { if (e.leadId === leadId) e.leadStatus = status; });
+/* The rule's answer is never overwritten. This stores a rep's disagreement
+   beside it, so the row can say "a human moved this" and the drawer can show
+   what the history actually says. Setting it back to the computed value
+   clears the override rather than freezing it. */
+async function setRelationship(leadId, value) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
+  const override = (c && c.verdict === value) ? null : value;
+  const l = LEADS.find(x => x.id === leadId); if (l) l.relationship_pattern = override;
   render();
-  try { await DB.updateLead(leadId, { status }); }
-  catch (e) { toast("Couldn't save that status: " + e.message, true); }
+  try { await DB.updateLead(leadId, { relationship_pattern: override }); }
+  catch (e) { toast("Couldn't save that: " + e.message, true); }
 }
+
 
 function sortContacts(k) {
   if (CSORT.key === k) CSORT.dir *= -1; else { CSORT.key = k; CSORT.dir = -1; }
@@ -1095,6 +1164,8 @@ async function adjudicate(key) {
   const { review } = identities();
   const r = review.find(x => x.key === key); if (!r) return;
   const slot = document.getElementById("aj_" + key.replace(/\|/g, "_"));
+  if (!slot || slot.dataset.done) return;
+  slot.dataset.done = "1";
   slot.innerHTML = `<div class="ai"><h4>Adjudicating <span class="spin"></span></h4></div>`;
   const res = await ask(`adj:${key}`, () => AI.adjudicateMatch(r.a, r.b, r.score, r.reasons),
     () => DEMO.adjudicate[r.a.name] || { verdict: "unsure", confidence: 50,
@@ -1125,58 +1196,86 @@ function decide(key, v) {
   render();
 }
 
-/* Everything we hold on this person, both versions side by side, editable.
-   The lead row is the record that survives the merge, so that is what saves. */
+/* Everything we hold on this person, every version of it, editable.
+
+   Two ways in, one screen. After a merge it is the reconcile step: two
+   records became one and somebody has to say which job title is current.
+   From the drawer it is plain editing. The screen is the same because the
+   problem is the same, and a contact whose details you can only fix at the
+   moment of a merge is a contact with a wrong job title forever.
+
+   The alternatives are not invented: they are the distinct values the
+   encounters actually recorded, most recent first. */
+function openEditContact(contactId) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.id === contactId); if (!c) return;
+  const recent = [...c.encounters].reverse();
+  const seen = f => [...new Set(recent.map(e => e[f]).filter(Boolean))];
+  S.rec = {
+    leadId: c.encounters[c.encounters.length - 1].leadId,
+    merged: false,
+    name: c.name || "", email: c.email || "",
+    title: c.title || "", company: c.company || "",
+    alts: { name: seen("name"), email: seen("email"), title: seen("title"), company: seen("company") },
+    backTo: contactId,
+    heading: `Edit ${c.name}`,
+    lede: "These are the details every version of this person was logged under. Pick one or type over it.",
+  };
+  drawReconcile();
+}
+
 function openReconcile(r) {
   if (!r) return;
-  const key = r.key;
   const target = r.b.at >= r.a.at ? r.b : r.a;        // the more recent record
   const other  = target === r.b ? r.a : r.b;
+  const pair = f => [...new Set([target[f], other[f]].filter(Boolean))];
   S.rec = {
-    key, leadId: target.leadId, otherLeadId: other.leadId,
+    leadId: target.leadId, merged: true,
     name: target.name || other.name || "",
     email: target.email || other.email || "",
     title: target.title || other.title || "",
     company: target.company || other.company || "",
-    a: other, b: target,
+    alts: { name: pair("name"), email: pair("email"), title: pair("title"), company: pair("company") },
+    heading: "Merged into one person",
+    lede: `${esc(other.confName)} on ${fmtDMY(other.at)} and ${esc(target.confName)} on ${fmtDMY(target.at)} `
+        + `are now one record. Both meetings are kept either way. This is only about the details carried forward.`,
   };
   drawReconcile();
 }
 
 function drawReconcile() {
   const d = S.rec; if (!d) return;
-  const alt = (label, field) => {
-    const av = d.a[field] || "", bv = d.b[field] || "";
-    const opts = [...new Set([bv, av].filter(Boolean))];
+  const field = (label, f) => {
+    const opts = d.alts[f] || [];
     return `<label>${label}</label>
-      <input class="inp" value="${esc(d[field])}" oninput="S.rec.${field}=this.value">
+      <input class="inp" value="${esc(d[f])}" oninput="S.rec.${f}=this.value">
       ${opts.length > 1 ? `<div class="chips" style="margin:4px 0 2px">
-        ${opts.map(o => `<button class="chip ${d[field] === o ? "on" : ""}"
-          onclick="S.rec.${field}=${JSON.stringify(o).replace(/"/g, "&quot;")};drawReconcile()">${esc(o)}</button>`).join("")}
-      </div><div class="tiny dim">Two versions on record. The newer one is ${esc(bv || "blank")}.</div>` : ""}`;
+        ${opts.map(o => `<button class="chip ${d[f] === o ? "on" : ""}"
+          onclick="S.rec.${f}=${JSON.stringify(o).replace(/"/g, "&quot;")};drawReconcile()">${esc(o)}</button>`).join("")}
+      </div><div class="tiny dim">${opts.length} versions on record. The newest is ${esc(opts[0])}.</div>` : ""}`;
   };
   drawer(`<div class="spread"><div>
-      <h3 style="margin:0">Merged into one person</h3>
-      <div class="tiny dim" style="margin-top:3px">Check what we hold on them before it goes to HubSpot.</div>
+      <h3 style="margin:0">${esc(d.heading)}</h3>
+      <div class="tiny dim" style="margin-top:3px">Everything here goes to HubSpot on the next sync.</div>
     </div><button class="x" onclick="closeReconcile()">×</button></div>`, `
-    <div class="tiny muted">
-      ${esc(d.a.confName)} on ${fmtDMY(d.a.at)} and ${esc(d.b.confName)} on ${fmtDMY(d.b.at)}
-      are now the same record. Both meetings are kept either way, this is only
-      about the details we carry forward.
-    </div>
+    <div class="tiny muted">${d.lede}</div>
     <div class="form">
-      ${alt("Full name", "name")}
-      ${alt("Work email", "email")}
-      ${alt("Role", "title")}
-      ${alt("Company", "company")}
+      ${field("Full name", "name")}
+      ${field("Work email", "email")}
+      ${field("Role", "title")}
+      ${field("Company", "company")}
     </div>
     <div class="row">
       <button class="btn" onclick="saveReconcile()">Save</button>
-      <button class="btn ghost" onclick="closeReconcile()">Leave it as it is</button>
+      <button class="btn ghost" onclick="closeReconcile()">Cancel</button>
     </div>`);
 }
 
-function closeReconcile() { S.rec = null; S.reconcile = null; closeDrawer(); render(); }
+function closeReconcile() {
+  const back = S.rec && S.rec.backTo;
+  S.rec = null; S.reconcile = null; closeDrawer(); render();
+  if (back) openContact(back);
+}
 
 async function saveReconcile() {
   const d = S.rec; if (!d) return;
@@ -1262,6 +1361,11 @@ function identityBlock(c) {
   const { review } = identities();
   const mine = review.filter(r => c.encounters.some(e => e.leadId === r.a.leadId || e.leadId === r.b.leadId));
   if (!mine.length) return "";
+  /* The model's read arrives on its own. There used to be an "Ask the model"
+     button here, which was the wrong shape: the rep already knows they want
+     help, that is why they are looking at an ambiguous pair. Asking them to
+     press a button to get it is making them do the tool's job. */
+  mine.forEach(r => setTimeout(() => adjudicate(r.key), 60));
   return mine.map(r => {
     const k = r.key.replace(/\|/g, "_");
     return `<div class="card pad" style="border-color:var(--line)">
@@ -1277,7 +1381,6 @@ function identityBlock(c) {
       <div class="row" style="margin-top:9px">
         <button class="btn sm" onclick="decide('${r.key}','same')">Same person</button>
         <button class="btn ghost sm" onclick="decide('${r.key}','different')">Two people</button>
-        <button class="btn ghost sm" onclick="adjudicate('${r.key}')">Ask the model</button>
       </div>
     </div>`;
   }).join("");
@@ -1306,7 +1409,10 @@ function arcBlock(c) {
 function arcHTML(a) {
   if (!a) return "";
   const em = a.email || {};
+  /* Demo state is a badge, never a sentence. Nobody watching this should
+     read the word demo in the middle of a sales brief. */
   return `
+    ${a.__demo ? `<div class="demobadge" title="No model key is set, so this brief is built from the rules alone. Add a key in Settings for the written version.">sample brief</div>` : ""}
     <div class="arcline"><span>Arc</span><p>${esc(a.arc || "")}</p></div>
     <div class="arcline"><span>Read</span><p>${esc(a.why || "")}</p></div>
     <div class="arcline"><span>Do</span><p><b>${esc(a.nudge || "")}</b></p></div>
@@ -1342,8 +1448,8 @@ async function askArc(id) {
 }
 
 function drawContact(c) {
-  const st = (c.encounters[c.encounters.length - 1].leadStatus) || "New";
   const leadId = c.encounters[c.encounters.length - 1].leadId;
+  const rel = (LEADS.find(l => l.id === leadId) || {}).relationship_pattern || c.verdict;
   const NOW = new Date().toISOString();
   const met = c.encounters.filter(e => e.at <= NOW).length;
   drawer(`
@@ -1351,11 +1457,15 @@ function drawContact(c) {
       <h3 style="margin:0">${esc(c.name)}</h3>
       <div class="tiny dim" style="margin-top:3px">${esc(c.title)} · ${esc(c.company)}${c.email ? " · " + esc(c.email) : ""}</div>
       <div class="row tiny" style="margin-top:8px;gap:6px;align-items:center">
-        <select class="status ls-${st.replace(/\s/g, "")}" onchange="setLeadStatus('${leadId}', this.value);openContact('${c.id}')">
-          ${LEAD_STATUS.map(o => `<option${st === o ? " selected" : ""}>${o}</option>`).join("")}
+        <select class="status rel-${rel}" onchange="setRelationship('${leadId}', this.value);openContact('${c.id}')">
+          ${LEAD_STATUS.map(o => `<option${rel === o ? " selected" : ""}>${o}</option>`).join("")}
         </select>
         <span class="sig ${c.encounters[c.encounters.length - 1].intent}">${c.encounters[c.encounters.length - 1].intent}</span>
         <span class="pill">${met} meeting${met === 1 ? "" : "s"}</span>
+      </div>
+      <div class="row" style="margin-top:9px;gap:7px">
+        <button class="btn ghost sm" onclick="openAddPerson(null, '${c.id}')">Log a meeting</button>
+        <button class="btn ghost sm" onclick="openEditContact('${c.id}')">Edit details</button>
       </div>
     </div><button class="x" onclick="closeDrawer()">×</button></div>`, `
     <div class="verdictbar">
@@ -1386,16 +1496,7 @@ function drawContact(c) {
             ? `<div class="tiny dim" style="margin-top:4px">As typed: "${esc(e.raw)}"</div>` : ""}
         </div>`).join("")}
     </div>
-
-    <div class="card pad">
-      <div class="spread">
-        <h4 style="margin:0">HubSpot</h4>
-        ${pushState(c) === "manual"
-          ? `<button class="btn" onclick="pushOne('${c.id}')">Push now</button>`
-          : `<button class="btn ghost" title="Hot and warm already went on their own. Press only to send it again." onclick="pushOne('${c.id}')">Push again</button>`}
-      </div>
-      <pre id="hs_out" class="mono" style="margin:10px 0 0;white-space:pre-wrap;color:var(--ink2)"></pre>
-    </div>`);
+`);
 }
 
 /* ── HubSpot ─────────────────────────────────────────────────────────
@@ -1410,30 +1511,18 @@ function drawContact(c) {
    three hundred names nobody will ever call, and how the follow-up
    sequences that run in HubSpot start emailing people who never asked.
    Cold stays in this tool until a human decides otherwise.            */
-const AUTO_PUSH = ["hot", "warm"];
 const lastIntent = c => c.encounters[c.encounters.length - 1].intent;
 const hasRelay = () => !!localStorage.getItem("hubspot_relay");
 
-/* Four states, and they mean four different things. "queued" exists
-   because saying "pushed" when no relay is configured would be a lie the
-   rep only finds out about when the follow-up never arrives. */
-function pushState(c) {
-  if (S.pushed.has(c.id)) return "pushed";
-  if (S.queued.has(c.id)) return "queued";
-  return AUTO_PUSH.includes(lastIntent(c)) ? "auto" : "manual";
-}
+/* There is no push button anywhere, and no sync column. Every contact goes
+   to HubSpot, carrying its lead status, ICP fit and relationship, and every
+   new encounter appends to the SAME HubSpot record matched on work email, so
+   a person met at four conferences is one contact with four notes rather
+   than four contacts.
 
-/* One button, and its absence is the whole rule. Hot and warm go on their own,
-   so they read as a finished state, not as something waiting to be clicked.
-   The navy "Push" needs a human, and it only ever appears on a cold lead. */
-const PUSHED_PILL = `<span class="pill" title="Hot and warm go to HubSpot on their own when saved">pushed</span>`;
-const PUSH_LABEL = {
-  pushed: PUSHED_PILL,
-  queued: PUSHED_PILL,
-  auto:   PUSHED_PILL,
-  manual: `<button class="btn sm">Push</button>`,
-};
-const pushBadge = c => PUSH_LABEL[pushState(c)];
+   A button would be a lie about where the work happens. The rep's job is to
+   log the meeting; keeping the CRM current is the tool's job, and a sync you
+   have to remember to press is a sync that does not happen. */
 
 function buildPayload(c) {
   const arc = S.aiCache[`arc:${c.id}`] || null;
@@ -1443,10 +1532,10 @@ function buildPayload(c) {
       firstname: c.name.split(" ")[0], lastname: c.name.split(" ").slice(1).join(" "),
       email: c.email, company: c.company, jobtitle: c.title,
       grain_conference_touches: c.touches,
-      grain_relationship_pattern: c.verdict,
+      grain_lead_status: c.relationship || c.verdict,
+      grain_icp_fit: (c.icp && c.icp.band) || icpFit({ segment: c.segment, title: c.title }).band,
       grain_first_met_at: c.encounters[0].confName,
       grain_last_met_at: last.confName,
-      grain_priority: c.priority,
       hs_lead_status: lastIntent(c) === "hot" ? "OPEN_DEAL" : "IN_PROGRESS",
     },
     /* Every meeting note, as a timeline note. This is the point of the whole
@@ -1467,8 +1556,10 @@ function buildPayload(c) {
 
        Both only exist when a rule says something happened. No trigger, no
        draft, no note, no noise. */
+    /* No recipient field: hs_email_to_email is read only in HubSpot, tested
+       rather than assumed. HubSpot addresses the draft from the contact the
+       email is associated to, so the association is what carries it. */
     draft: (c.needsNudge && arc && arc.email && arc.email.body) ? {
-      to: c.email || null,
       subject: arc.email.subject || `Following up from ${last.confName}`,
       body: arc.email.body,
     } : null,
@@ -1487,51 +1578,39 @@ function buildPayload(c) {
   };
 }
 
-async function pushOne(id, opts = {}) {
+/* One sync path, used by every caller. Quiet by design: this runs after a
+   save, and a toast per contact would be noise about plumbing the rep did
+   not ask for. It speaks up only when something failed. */
+async function syncOne(id, { quiet = true } = {}) {
   const { contacts } = identities();
-  const c = contacts.find(x => x.id === id); if (!c) return;
-  const payload = buildPayload(c);
+  const c = contacts.find(x => x.id === id); if (!c) return false;
   const relay = localStorage.getItem("hubspot_relay");
-  const out = opts.auto ? null : document.getElementById("hs_out");
-
-  if (relay) {
-    try {
-      const res = await fetch(relay, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      if (res.ok) { S.pushed.add(id); S.queued.delete(id); }
-      else if (!opts.auto && out) out.textContent = `Relay returned ${res.status}.`;
-      if (out && res.ok) out.textContent = "Synced to HubSpot. Follow-up sequences run there, not here.";
-      if (opts.auto && !opts.quiet) toast(res.ok
-        ? `${c.name} pushed to HubSpot, ${lastIntent(c)}.`
-        : `${c.name} saved, HubSpot relay returned ${res.status}.`, !res.ok);
-    } catch (e) {
-      S.queued.add(id);
-      if (out) out.textContent = "Couldn't reach the relay URL: " + e.message;
-      if (opts.auto && !opts.quiet) toast(`${c.name} saved. HubSpot relay unreachable, queued.`, true);
-    }
-  } else {
-    // No relay. Do not pretend. Hot and warm are recorded as queued so the
-    // state is recoverable the moment a URL is set; a manual push shows the
-    // payload, which is the useful thing to see when nothing is wired up.
-    if (opts.auto) { S.queued.add(id); if (!opts.quiet) toast(`${c.name} saved and queued for HubSpot, no relay URL set yet.`); }
-    else {
-      S.pushed.add(id);
-      if (out) out.textContent = "No relay URL set (Settings). This is the payload that would be sent:\n\n"
-        + JSON.stringify(payload, null, 2);
-    }
+  if (!relay) { S.queued.add(id); save(); return false; }
+  try {
+    const res = await fetch(relay, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildPayload(c)),
+    });
+    if (res.ok) { S.pushed.add(id); S.queued.delete(id); }
+    else { S.queued.add(id); if (!quiet) toast(`HubSpot returned ${res.status} for ${c.name}.`, true); }
+    save();
+    return res.ok;
+  } catch (e) {
+    S.queued.add(id); save();
+    if (!quiet) toast(`Couldn't reach HubSpot: ${e.message}`, true);
+    return false;
   }
-  save();
-  if (!out && !opts.quiet) render();
 }
 
-/* Called after a save. The contact id is not the lead id, identity
-   resolution can fold several leads into one person, so look it up. */
+/* Called after a save. The contact id is not the lead id, because identity
+   resolution can fold several leads into one person, so look it up. Every
+   contact syncs, not only the warm ones: the relationship and the ICP fit
+   go with them, so HubSpot can tell the difference itself. */
 async function autoPush(leadId) {
   const { contacts } = identities();
   const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
   if (!c) return false;
-  if (!AUTO_PUSH.includes(lastIntent(c))) return false;
-  await pushOne(c.id, { auto: true });
-  return true;
+  return syncOne(c.id);
 }
 
 /* ── SIGNAL MINING ────────────────────────────────────────────────────
@@ -1616,9 +1695,9 @@ VIEWS_SETTINGS = () => {
           oninput="localStorage.setItem('hubspot_relay',this.value)">
       </div>
       <div class="alert" style="margin-top:11px"><b>Custom properties expected:</b>
-        <span class="mono">grain_conference_touches</span>, <span class="mono">grain_relationship_pattern</span>,
-        <span class="mono">grain_first_met_at</span>, <span class="mono">grain_last_met_at</span>,
-        <span class="mono">grain_priority</span></div>
+        <span class="mono">grain_conference_touches</span>, <span class="mono">grain_relationship</span>,
+        <span class="mono">grain_icp_fit</span>, <span class="mono">grain_lead_status</span>,
+        <span class="mono">grain_first_met_at</span>, <span class="mono">grain_last_met_at</span></div>
 
       <h3 style="margin-top:20px">Data</h3>
       <div class="row">
@@ -1715,10 +1794,9 @@ async function sweepAutoPush() {
   try {
     const { contacts } = identities();
     for (const c of contacts) {
-      if (S.pushed.has(c.id) || S.queued.has(c.id)) continue;
-      if (!AUTO_PUSH.includes(lastIntent(c))) continue;
-      if (hasRelay()) await pushOne(c.id, { auto: true, quiet: true });
-      else { S.queued.add(c.id); touched = true; }
+      if (S.pushed.has(c.id)) continue;
+      if (hasRelay()) await syncOne(c.id);
+      else if (!S.queued.has(c.id)) { S.queued.add(c.id); touched = true; }
     }
   } catch (e) { /* never let a sync sweep take the page down */ }
   if (touched) { save(); render(); }
@@ -1931,10 +2009,27 @@ async function saveConference() {
    ══════════════════════════════════════════════════════════════════════ */
 S.ap = null;
 
-function openAddPerson(confId) {
-  S.ap = { stage: "email", email: "", matches: [], checking: false,
-    leadId: null, known: null,
-    fields: { name: "", company: "", title: "", phone: "", segment: "PSP" },
+/* Two ways in. From a conference, where the email step is the duplicate
+   check. From an existing contact, where we already know who they are and
+   the only question is which event this meeting was at and what was said,
+   so it skips straight to the encounter step. Logging the fourth meeting
+   with someone should not make a rep re-type their email. */
+function openAddPerson(confId, contactId) {
+  const known = contactId
+    ? identities().contacts.find(x => x.id === contactId) : null;
+  const lead = known ? known.encounters[known.encounters.length - 1] : null;
+  S.ap = {
+    stage: known ? "encounter" : "email",
+    email: known ? (known.email || "") : "",
+    matches: [], checking: false,
+    leadId: known ? lead.leadId : null,
+    known: known ? { full_name: known.name, company: known.company, title: known.title } : null,
+    backTo: contactId || null,
+    fields: {
+      name: known ? known.name : "", company: known ? (known.company || "") : "",
+      title: known ? (known.title || "") : "", phone: "",
+      segment: known ? (known.segment || "PSP") : "PSP",
+    },
     confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "",
     repId: REP_ID() };
   drawAddPerson();
@@ -2048,9 +2143,12 @@ function drawAddPerson() {
       <button class="btn" onclick="savePerson()">Save encounter</button>`;
   }
 
-  drawer(`<div class="spread"><h3 style="margin:0">Add a person</h3>
+  /* Coming from an existing contact there is no duplicate check to run and
+     no identity to establish, so the stepper would be showing three stages
+     that will never happen. */
+  drawer(`<div class="spread"><h3 style="margin:0">${a.backTo ? "Log a meeting" : "Add a person"}</h3>
       <button class="x" onclick="S.ap=null;closeDrawer()">×</button></div>
-    <div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("form")}${step("encounter")}</div>`,
+    ${a.backTo ? "" : `<div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("form")}${step("encounter")}</div>`}`,
     body);
 }
 
@@ -2105,14 +2203,15 @@ async function savePerson() {
       title_as_given: a.known ? a.known.title : a.fields.title,
       email_as_given: a.email || null,
     });
-    const wasKnown = !!a.leadId;
+    const wasKnown = !!a.leadId, backTo = a.backTo;
     S.ap = null; closeDrawer(); await reload();
     const { contacts } = identities();
     const c = contacts.find(x => x.encounters.some(e => e.leadId === leadId));
     toast(wasKnown && c
-      ? `Logged. ${c.name} has now been met ${c.touches} times, ${c.pattern.toLowerCase()}.`
+      ? `Logged. ${c.name} has now been met ${c.touches} times, ${c.verdict.toLowerCase()}.`
       : "Saved.");
     await autoPush(leadId);
-    if (wasKnown) { S.view = "contacts"; render(); }
+    if (backTo && c) { S.view = "contacts"; render(); openContact(c.id); }
+    else if (wasKnown) { S.view = "contacts"; render(); }
   } catch (e) { toast("Save failed: " + e.message, true); }
 }

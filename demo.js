@@ -62,28 +62,57 @@ const DEMO = {
         body:"In February you said to come back when the platform team had capacity. In June you told me that would be September.\nIt is September.\nI only have a phone number for you, which is my fault. Can you send me an email address and I will get a technical session in the diary before the end of the month?" } },
   },
 
-  /* Demo mode has no model. Six contacts have a hand-written arc because they
-     are the ones worth reading. Everyone else gets a generic brief built from
-     the same rule output the real prompt is handed, which is honest: it says
-     less, because without a model there is less to say. */
+  /* Demo mode has no model. Six contacts have a hand-written arc because
+     they are the ones worth reading. Everyone else gets a brief built from
+     the same rule output the real prompt is handed.
+
+     What this must never do is write its own excuse into the prose. An
+     earlier version ended the next step with "turn on a model key in
+     Settings" and put "demo mode has no model" in the email body, which put
+     the word demo in the middle of a sales brief. The card carries a badge
+     instead. Every sentence below stands on its own and is true. */
   arc(c) {
     const canned = DEMO.arcs[c.name];
     if (canned) return { ...canned, __demo: true };
-    const last = c.encounters[c.encounters.length - 1];
+
+    const first = c.encounters[0], last = c.encounters[c.encounters.length - 1];
+    const name = c.name.split(" ")[0];
+    const n = c.touches;
+
+    const why = c.verdict === "Dormant" && c.overdue
+        ? `They have gone past their own usual gap of ${c.usualGapDays} days without a word. That is where a relationship quietly ends.`
+      : c.verdict === "Dormant"
+        ? `${n} meetings and they have never once named a budget or a date. Treat this as a tire-kicker until something changes.`
+      : c.verdict === "Active"
+        ? "They named something concrete at the last meeting. The risk here is being slow, not being wrong."
+      : c.changedCompany
+        ? "They changed employer, so the objection you were working may have left with the old job."
+        : "Still in conversation, nothing named yet. Worth one specific question, not another pitch.";
+
+    const nudge = c.changedCompany
+        ? `Write to ${name} at the new company and ask what the FX picture looks like there. Do not reuse the old framing.`
+      : c.overdue
+        ? `Call ${name} rather than emailing. ${c.daysSince} days of silence is past the point where an email gets opened.`
+      : c.verdict === "Dormant"
+        ? `Ask ${name} one direct question: is there a budget line for this, and when does it open. A fourth polite conversation is worse than a clear no.`
+      : c.verdict === "Active"
+        ? `Reply to ${name} this week on the specific thing in the last note, and put a date in it.`
+        : `Pick the one specific thing ${name} said at ${last.confName} and write about that alone.`;
+
     return {
       __demo: true,
-      arc: `${c.touches} meeting${c.touches === 1 ? "" : "s"} on record. ${c.test}`,
-      why: c.verdict === "Stuck"
-          ? "They keep meeting us and have never named a budget or a date. That is a tire-kicker until proven otherwise."
-        : c.verdict === "Gone quiet"
-          ? "They have gone past their own usual gap without a word, which is the point where a relationship quietly ends."
-        : c.verdict === "Cooling"
-          ? "Something cooled after they were hot. The reason is in the notes, not in this number."
-          : "They changed employer, so the objection you were working may have left with the old job.",
-      nudge: `Re-read the last note, then write to ${c.name.split(" ")[0]} about the specific thing in it. Turn on a model key in Settings and this will be written for you.`,
+      arc: n === 1
+        ? `One meeting, at ${first.confName}. Nothing to compare it to yet.`
+        : `${n} meetings between ${first.confName} and ${last.confName}. ${c.test}`,
+      why,
+      nudge,
       avoid: "Do not send a generic check-in. It is the message that ends these.",
-      email: { subject: `Following up from ${last.confName}`,
-        body: `Demo mode has no model, so there is no draft here.\nAdd a key in Settings, or point the app at the n8n proxy, and this becomes a real email built from ${c.name.split(" ")[0]}'s own words in the notes above.` },
+      email: {
+        subject: `Following up from ${last.confName}`,
+        body: `We spoke at ${last.confName} and I have been thinking about what you said.\n`
+            + `${last.note ? `You mentioned: "${last.note}"` : "I wanted to pick up where we left off."}\n`
+            + `Is there a good 20 minutes in the next two weeks to go through it properly?`,
+      },
     };
   },
 

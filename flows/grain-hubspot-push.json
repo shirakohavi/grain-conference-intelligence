@@ -190,7 +190,7 @@
         "nodeCredentialType": "hubspotAppTokenApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { hs_timestamp: new Date().toISOString(), hs_email_direction: 'DRAFT_EMAIL', hs_email_status: 'DRAFT', hs_email_subject: $('Shape the payload').first().json.draft.subject, hs_email_html: $('Shape the payload').first().json.draft.body.split('\\n').map(l => '<p>' + l + '</p>').join(''), hs_email_to_email: $('Shape the payload').first().json.draft.to }, associations: [{ to: { id: $('One item per note').first().json.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 198 }] }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ properties: { hs_timestamp: new Date().toISOString(), hs_email_direction: 'DRAFT_EMAIL', hs_email_status: 'DRAFT', hs_email_subject: $('Shape the payload').first().json.draft.subject, hs_email_html: $('Shape the payload').first().json.draft.body.split('\\n').map(l => '<p>' + l + '</p>').join('') }, associations: [{ to: { id: $('One item per note').first().json.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 198 }] }] }) }}",
         "options": {}
       },
       "id": "draft",
@@ -201,7 +201,7 @@
         1800,
         -120
       ],
-      "notes": "A draft, never a sent email. hs_email_status DRAFT and direction DRAFT_EMAIL are both real options on this portal's schema, checked rather than assumed. Association 198 is email-to-contact. Nothing here can send: HubSpot does that, with a human pressing the button."
+      "notes": "A draft, never a sent email. hs_email_status DRAFT and direction DRAFT_EMAIL are real options, confirmed by creating one in the test portal rather than trusting docs. hs_email_to_email is READ ONLY and cannot be set here: HubSpot fills the recipient from the association, so the contact link is what addresses it. Association 198 is email-to-contact. Nothing in this flow can send."
     },
     {
       "parameters": {
