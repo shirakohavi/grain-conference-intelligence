@@ -1343,6 +1343,7 @@ function openEditContact(contactId) {
     merged: false,
     name: c.name || "", email: c.email || "",
     title: c.title || "", company: c.company || "",
+    segment: c.segment || "",
     alts: { name: seen("name"), email: seen("email"), title: seen("title"), company: seen("company") },
     backTo: contactId,
     heading: `Edit ${c.name}`,
@@ -1362,6 +1363,7 @@ function openReconcile(r) {
     email: target.email || other.email || "",
     title: target.title || other.title || "",
     company: target.company || other.company || "",
+    segment: target.segment || other.segment || "",
     alts: { name: pair("name"), email: pair("email"), title: pair("title"), company: pair("company") },
     heading: "Merged into one contact",
     lede: `${esc(other.confName)} on ${fmtDMY(other.at)} and ${esc(target.confName)} on ${fmtDMY(target.at)} `
@@ -1391,6 +1393,13 @@ function drawReconcile() {
       ${field("Work email", "email")}
       ${field("Role", "title")}
       ${field("Company", "company")}
+      <label>ICP segment</label>
+      <select class="inp" onchange="S.rec.segment=this.value">
+        <option value="">Not set</option>
+        ${SEGMENTS.map(sg => `<option${d.segment === sg ? " selected" : ""}>${sg}</option>`).join("")}
+      </select>
+      <div class="tiny dim" style="margin:3px 0 0">What the company does. It is 70 percent of the ICP fit,
+        and it applies to everyone you meet there.</div>
     </div>
     <div class="row">
       <button class="btn" onclick="saveReconcile()">Save</button>
@@ -1411,6 +1420,7 @@ async function saveReconcile() {
     await DB.updateLead(d.leadId, {
       full_name: v(d.name), work_email: v(d.email),
       title: v(d.title), company: v(d.company),
+      icp_segment: v(d.segment),
     });
     /* The lead row is not what the contact card reads. A contact's name,
        company and role come off its most recent encounter, because an
@@ -2287,7 +2297,8 @@ function openAddPerson(confId, contactId) {
   drawAddPerson();
 }
 
-const SEGMENTS = ["PSP", "Travel", "Marketplace", "BNPL", "Payroll", "Stablecoin", "Treasury", "Other"];
+/* Best fit first, same order as field mode and the scoring table. */
+const SEGMENTS = ["PSP", "Treasury", "Marketplace", "Travel", "BNPL", "Payroll", "Stablecoin", "Other"];
 
 function drawAddPerson() {
   const a = S.ap; if (!a) return;
