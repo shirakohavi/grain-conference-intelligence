@@ -1,19 +1,55 @@
 # n8n flows
 
-Two, and only two. Both are here as JSON because the source code is part of
-the submission, and because the n8n public API cannot attach credentials
-anyway: OAuth and header auth both need the browser consent flow, so these
-are imported by hand regardless.
+Three. All here as JSON because the source code is part of the submission,
+and because credentials have to be attached by hand anyway: OAuth and header
+auth both need the browser consent flow, so the n8n public API cannot do it.
 
 | Flow | What it is for |
 |---|---|
 | `grain-ai.json` | The model proxy. The app calls it instead of calling Anthropic from the browser. |
 | `grain-hubspot-push.json` | The CRM sync. Contact, meeting notes, and the draft follow-up email. |
+| `grain-discover.json` | The weekly conference search. Finds events nobody on the team has heard of. |
 
-Four earlier flows were deleted along with the features they served:
-conference discovery, the Slack and meeting-notes miner, the free-text
-capture parser, and a separate lead enrichment step. Each one worked. None
-survived the question "would a rep open this twice?".
+Three earlier flows were deleted along with the features they served: the
+Slack and meeting-notes miner, the free-text capture parser, and a separate
+lead enrichment step. Each one worked. None survived the question "would a
+rep open this twice?".
+
+## `grain-discover`
+
+Two ways in, one path out. A schedule trigger fires it every Monday at
+07:00; a webhook fires it when someone presses "Find conferences with AI" on
+the Conferences page. Both land in the same chain, so there is one behaviour
+to reason about rather than two.
+
+1. **Conferences we already have** reads the table, so the model is told
+   what not to suggest. The manual path also sends the browser's list, which
+   costs nothing and covers the case where the two disagree.
+2. **Write the search brief** builds the prompt. It names Grain's actual
+   buyers, sets the rule that a null is a correct answer and a guess is not,
+   and pins today's date so "the next 12 months" means something.
+3. **Claude with web search** is an ordinary Messages API call with the
+   `web_search_20250305` tool attached. The model searches, reads, and
+   answers from what it read.
+4. **Keep only what is new** parses the array, drops anything whose name
+   already exists after normalising, drops anything with no URL, and builds
+   the rows. It deliberately sets none of the four judgement scores.
+5. **Add them** inserts. **How many** reports the count back to the button.
+
+A discovered row arrives tagged `AI sourced`, carrying the page the search
+cited, with whatever the search actually found and blanks where it found
+nothing. It has no tier, because nobody has scored it, so it sits in the
+existing "needs scoring" state until a person fills in the estimates.
+
+That split is the whole point. Finding an event nobody knew about is
+recall, which a model with a search tool is good at. Deciding whether it is
+worth a flight is judgement about this company's pipeline, which it is not.
+So the flow is allowed to add rows and forbidden to rank them.
+
+It needs two credentials: the same header-auth Anthropic key `grain-ai`
+uses, and a Supabase credential holding the project URL and the
+`service_role` key. That key writes to the database, so it belongs in n8n's
+credential store and nowhere near the repo or the browser.
 
 ## Why `grain-ai` exists at all
 

@@ -30,6 +30,8 @@ const DB = (() => {
     covering: r.covering || [],
     attendedBefore: r.attended_before, datesConfirmed: r.dates_confirmed,
     note: r.note,
+    /* Set by the weekly discovery run in n8n, never by a person. */
+    aiSourced: !!r.ai_sourced, sourceUrl: r.source_url, discoveredAt: r.discovered_at,
   });
 
   /* An encounter carries the identity AS RECORDED AT THE TIME, which is what

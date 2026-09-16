@@ -84,8 +84,12 @@ const repSelect = (value, onchange, { placeholder = "Choose your name" } = {}) =
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-const fmtRange = c => c.start === c.end ? `${fmtDate(c.start)} ${c.start.slice(0, 4)}`
+/* A discovered event may have no announced date yet. Blank is the honest
+   answer; an invented date would quietly get planned around. */
+const fmtRange = c => !c.start ? `<span class="dim">Date not announced</span>`
+  : c.start === c.end ? `${fmtDate(c.start)} ${c.start.slice(0, 4)}`
   : `${fmtDate(c.start)}–${fmtDate(c.end)} ${c.end.slice(0, 4)}`;
+const fmtPlace = c => [c.city, c.country].filter(Boolean).join(", ");
 /* Dates the way the team writes them. */
 const fmtDMY = iso => {
   const d = new Date(iso);
@@ -159,7 +163,7 @@ function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
    VIEW 1, CONFERENCES.  Decide what's worth attending.
    REDESIGNED: Quiet inline filter bar instead of boxed inputs.
    ══════════════════════════════════════════════════════════════════════ */
-const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", size: "", status: "", reps: [] };
+const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", size: "", status: "", reps: [], ai: "" };
 
 /* One dropdown builder for the whole filter bar. Every filter is a select, so
    nothing on this page is a row of buttons pretending to be a control. */
@@ -211,8 +215,10 @@ function weightsPanel() {
 
 VIEWS_CONF = () => {
   let list = scored();
-  if (F.when === "upcoming") list = list.filter(x => x.c.start >= TODAY);
-  if (F.when === "past") list = list.filter(x => x.c.start < TODAY);
+  // No date yet is not the same as already happened, so it stays in Upcoming.
+  if (F.when === "upcoming") list = list.filter(x => !x.c.start || x.c.start >= TODAY);
+  if (F.when === "past") list = list.filter(x => x.c.start && x.c.start < TODAY);
+  if (F.ai) list = list.filter(x => F.ai === "ai" ? x.c.aiSourced : !x.c.aiSourced);
   if (F.region) list = list.filter(x => x.c.region === F.region);
   if (F.tier) list = list.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
   if (F.vertical) list = list.filter(x => x.c.verticals.includes(F.vertical));
@@ -232,7 +238,11 @@ VIEWS_CONF = () => {
   <div class="head">
     <div class="spread">
       <h1>Conferences</h1>
-      <button class="btn" onclick="openAddConference()">Add conference</button>
+      <div class="row">
+        <button class="btn ghost" id="discbtn" onclick="findConferences()">${
+          S.busy.discover ? `<span class="spin"></span> Searching the web…` : "Find conferences with AI"}</button>
+        <button class="btn" onclick="openAddConference()">Add conference</button>
+      </div>
     </div>
   </div>
 
@@ -246,6 +256,7 @@ VIEWS_CONF = () => {
     ${FSEL("size", "Any size", SIZE_BANDS.map(b => [b.key, b.label]))}
     ${repFilter("F")}
     ${FSEL("tier", "All tiers", [["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["?", "Not scored"]])}
+    ${FSEL("ai", "Any origin", [["ai", "AI sourced"], ["human", "Added by a person"]])}
     <div class="filter-stat">${list.length} of ${CONFERENCES.length}</div>
   </div>
 
@@ -277,8 +288,9 @@ function confTableHTML(list) {
           return `<tr class="${s.unscored ? "needs" : ""}" onclick="openConf('${c.id}')">
             <td>
               <div class="cell-name">${esc(c.name)}</div>
-              ${!c.datesConfirmed || c.attendedBefore ? `<div class="row" style="gap:5px;margin-top:3px">
-                ${!c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
+              ${(c.start && !c.datesConfirmed) || c.attendedBefore || c.aiSourced ? `<div class="row" style="gap:5px;margin-top:3px">
+                ${c.aiSourced ? `<span class="pill ai">AI sourced</span>` : ""}
+                ${c.start && !c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
                 ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
               </div>` : ""}
             </td>
@@ -301,7 +313,7 @@ function confTableHTML(list) {
               ? `<span class="tier Q" title="No estimates yet">?</span>`
               : `<div class="row" style="gap:7px;flex-wrap:nowrap">
                    <span class="tier ${s.tier}">${s.tier}</span><span class="score">${s.total}</span></div>`}</td>
-            <td class="tiny muted">${fmtRange(c)}<div class="dim">${esc(c.city)}, ${esc(c.country)}</div></td>
+            <td class="tiny muted">${fmtRange(c)}<div class="dim">${esc(fmtPlace(c))}</div></td>
           </tr>`; }).join("")}
         </tbody></table>
         ${list.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}`;
@@ -358,9 +370,17 @@ function drawConf(ai) {
       <div class="row" style="gap:8px">
         <span class="tier ${s.unscored ? "Q" : s.tier}">${s.unscored ? "?" : s.tier}</span>
         <h3 style="margin:0">${esc(c.name)}</h3></div>
-      <div class="tiny dim" style="margin-top:4px">${fmtRange(c)} · ${esc(c.city)}, ${esc(c.country)}${
-        c.audienceSize != null ? ` · ~${c.audienceSize.toLocaleString()} attending` : ""} · ticket ${eur(c.ticketEur)}</div>
-    </div><button class="x" onclick="closeDrawer()">×</button></div>`;
+      <div class="tiny dim" style="margin-top:4px">${[
+        fmtRange(c), fmtPlace(c),
+        c.audienceSize != null ? `~${c.audienceSize.toLocaleString()} attending` : "",
+        `ticket ${eur(c.ticketEur)}`].filter(Boolean).join(" · ")}</div>
+    </div><button class="x" onclick="closeDrawer()">×</button></div>
+    ${c.aiSourced ? `<div class="alert" style="margin-top:10px">
+      <b>AI sourced.</b> Found by the weekly web search${
+        c.discoveredAt ? ` on ${fmtDMY(c.discoveredAt.slice(0, 10))}` : ""}, not by a person.
+      Check it against the source before planning around it.${
+        c.sourceUrl ? ` <a href="${esc(c.sourceUrl)}" target="_blank" rel="noopener noreferrer">Source</a>` : ""}
+    </div>` : ""}`;
 
   /* ── an event nobody has assessed yet ─────────────────────────────── */
   if (s.unscored) {
@@ -1993,6 +2013,40 @@ const ACTIVATIONS = [
 ];
 const STATUSES = ["New", "Going", "Considering", "Not going"];
 S.newConf = null;
+
+/* ══════════════════════════════════════════════════════════════════════
+   FIND CONFERENCES WITH AI
+
+   The same n8n flow runs on a weekly schedule; this button is the manual
+   way in. The work happens server-side because it needs a web search and a
+   write to Postgres, neither of which belongs in a page anyone can open.
+   Nothing here decides anything: rows arrive tagged AI sourced, with no
+   tier, and a person scores them. The tool found the event; the judgement
+   about whether to go is still the team's.
+   ══════════════════════════════════════════════════════════════════════ */
+async function findConferences() {
+  const base = (localStorage.getItem("n8n_base") || "").replace(/\/+$/, "");
+  if (!base) { toast("Set the n8n base URL in Settings first.", true); return; }
+  if (S.busy.discover) return;
+  S.busy.discover = true; render();
+  try {
+    const r = await fetch(base + "/webhook/grain-discover", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ known: CONFERENCES.map(c => c.name) }),
+    });
+    if (!r.ok) throw new Error("n8n returned " + r.status);
+    const j = await r.json().catch(() => ({}));
+    const n = j.added ?? 0;
+    await reload();
+    toast(n
+      ? `${n} event${n > 1 ? "s" : ""} added, tagged AI sourced. They need scoring.`
+      : "Nothing new found. Everything the search turned up is already on the list.");
+  } catch (e) {
+    toast("Search failed: " + e.message, true);
+  } finally {
+    S.busy.discover = false; render();
+  }
+}
 
 function openAddConference() {
   S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",

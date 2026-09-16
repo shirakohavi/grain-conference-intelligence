@@ -1,0 +1,232 @@
+{
+  "name": "grain-discover",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grain-discover",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "n-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        40
+      ],
+      "webhookId": "grain-discover"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "n-cron",
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -260,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "conferences",
+        "returnAll": true
+      },
+      "id": "n-read",
+      "name": "Conferences we already have",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Code node 1: \"Write the search brief\" */\nconst REGIONS = [\"Europe\", \"North America\", \"Middle East\", \"Asia-Pacific\", \"Africa\", \"South America\"];\nconst VERTICALS = [\"Payments\", \"PSP\", \"Acquiring\", \"Fintech\", \"Banking\", \"Open Banking\",\n  \"Treasury\", \"Marketplaces\", \"E-commerce\", \"Cross-border E-commerce\", \"Retail\",\n  \"Travel\", \"Travel Tech\", \"Stablecoin\", \"Digital Assets\", \"Policy\"];\n\nconst rows = $input.all().map(i => i.json).filter(r => r && r.name);\nlet fromBody = [];\ntry { fromBody = $('Webhook').first().json.body.known || []; } catch (e) { fromBody = []; }\n\nconst known = [...new Set([...rows.map(r => r.name), ...fromBody])];\nconst knownIds = rows.map(r => r.id).filter(Boolean);\nconst today = new Date().toISOString().slice(0, 10);\n\nconst system = [\n  \"You find business conferences, using web search.\",\n  \"\",\n  \"Who this is for: Grain sells embedded cross-currency FX hedging. Their\",\n  \"customers are companies that move money across currencies for other\",\n  \"people: payment service providers, marketplaces, travel platforms,\",\n  \"payroll providers, BNPL lenders, stablecoin infrastructure, and corporate\",\n  \"treasury teams. Their sales team goes to conferences to meet those\",\n  \"companies, so an event is only useful if those buyers attend it.\",\n  \"\",\n  \"Rules:\",\n  \"1. Search the web. Only return an event if a page you actually read says\",\n  \"   it exists. Never invent an event, a date, a city or an attendance\",\n  \"   figure, and never carry one over from memory without checking.\",\n  \"2. If a field was not on the page you read, set it to null. A null is a\",\n  \"   correct answer. A guess is not.\",\n  \"3. url must be a page you actually opened during this search.\",\n  \"4. Prefer events taking place in the next 12 months. Today is \" + today + \".\",\n  \"5. Return a JSON array and nothing else. No prose, no code fence.\",\n].join(\"\\n\");\n\nconst prompt = [\n  \"The team already tracks these \" + known.length + \" events:\",\n  known.map(n => \"- \" + n).join(\"\\n\"),\n  \"\",\n  \"Find up to 6 events that are NOT in that list and that Grain's sales team\",\n  \"should know about. Each element of the array:\",\n  \"{\",\n  '  \"name\": string,',\n  '  \"start_date\": \"YYYY-MM-DD\" or null,',\n  '  \"end_date\": \"YYYY-MM-DD\" or null,',\n  '  \"city\": string or null,',\n  '  \"country\": string or null,',\n  '  \"region\": one of ' + JSON.stringify(REGIONS) + ',',\n  '  \"verticals\": 1 to 3 of ' + JSON.stringify(VERTICALS) + ',',\n  '  \"audience_size\": integer or null,',\n  '  \"url\": string,',\n  '  \"why\": one sentence, 25 words max, on which of Grain\\'s buyers are in that room',\n  \"}\",\n].join(\"\\n\");\n\nreturn [{ json: { known, knownIds, system, prompt } }];\n"
+      },
+      "id": "n-brief",
+      "name": "Write the search brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 4000, system: $json.system, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }], messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "n-claude",
+      "name": "Claude with web search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Code node 2: \"Keep only what is new\" */\nconst brief = $('Write the search brief').first().json;\nconst res = $json;\n\nconst text = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('\\n');\nconst m = text.match(/\\[[\\s\\S]*\\]/);\nlet found = [];\ntry { found = m ? JSON.parse(m[0]) : []; } catch (e) { found = []; }\n\nconst norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');\nconst knownSet = new Set(brief.known.map(norm));\nconst idSet = new Set(brief.knownIds || []);\n\nconst REGIONS = [\"Europe\", \"North America\", \"Middle East\", \"Asia-Pacific\", \"Africa\", \"South America\"];\nconst isDate = d => typeof d === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(d);\n\nconst slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 22);\nconst mkId = (e, i) => {\n  const yr = isDate(e.start_date) ? e.start_date.slice(2, 4) : String(new Date().getFullYear()).slice(2);\n  let id = slug(e.name) + '-' + yr;\n  while (idSet.has(id)) id = slug(e.name) + '-' + yr + '-' + (i + 1);\n  idSet.add(id);\n  return id;\n};\n\nconst out = [];\nfor (const [i, e] of found.entries()) {\n  if (!e || !e.name || !e.url) continue;          // no citation, no row\n  if (knownSet.has(norm(e.name))) continue;        // we already track it\n  const start = isDate(e.start_date) ? e.start_date : null;\n  const end = isDate(e.end_date) ? e.end_date : (start || null);\n  out.push({\n    json: {\n      id: mkId(e, i),\n      name: String(e.name).slice(0, 120),\n      start_date: start,\n      end_date: end,\n      city: e.city || null,\n      country: e.country || null,\n      region: REGIONS.includes(e.region) ? e.region : null,\n      verticals: Array.isArray(e.verticals) ? e.verticals.slice(0, 3) : [],\n      audience_size: Number.isFinite(e.audience_size) ? Math.round(e.audience_size) : null,\n      /* No icp_density, seniority, cross_border or strategic. Those four are\n         the judgement the score is built from, and they are a person's to\n         make. The row lands unscored on purpose. */\n      status: 'New',\n      dates_confirmed: !!start,\n      ai_sourced: true,\n      source_url: String(e.url).slice(0, 500),\n      discovered_at: new Date().toISOString(),\n      note: e.why ? String(e.why).slice(0, 300) : null,\n    },\n  });\n}\nreturn out;\n"
+      },
+      "id": "n-keep",
+      "name": "Keep only what is new",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "conferences",
+        "dataToSend": "autoMapInputData"
+      },
+      "id": "n-add",
+      "name": "Add them",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        840,
+        140
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Code node 3: \"How many\" */\nconst rows = $input.all().filter(i => i.json && i.json.id);\nreturn [{ json: { added: rows.length, events: rows.map(r => r.json.name) } }];\n"
+      },
+      "id": "n-count",
+      "name": "How many",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Conferences we already have",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Conferences we already have",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conferences we already have": {
+      "main": [
+        [
+          {
+            "node": "Write the search brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write the search brief": {
+      "main": [
+        [
+          {
+            "node": "Claude with web search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude with web search": {
+      "main": [
+        [
+          {
+            "node": "Keep only what is new",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep only what is new": {
+      "main": [
+        [
+          {
+            "node": "Add them",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add them": {
+      "main": [
+        [
+          {
+            "node": "How many",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -220,6 +220,7 @@ tbody tr.picked{background:var(--accent-soft)}
 .pill.warn{background:#FCF3E4;color:#8A6516}
 .pill.bad{background:#FCEEEC;color:#B03A2E}
 .pill.outline{background:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
+.pill.ai{background:#E8EEFC;color:#2F4B8F;font-weight:500}
 
 /* The event name is the row's anchor, so give it room so it stops wrapping to
    three lines, and let it read as the primary text. */

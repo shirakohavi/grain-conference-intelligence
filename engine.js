@@ -107,9 +107,17 @@ const TIERS = [
 ];
 
 function daysOf(c) {
+  if (!c.start || !c.end) return 1;
   const a = new Date(c.start), b = new Date(c.end);
   return Math.max(1, Math.round((b - a) / 86400000) + 1);
 }
+
+/* A conference with no announced date still belongs in the list, but it
+   cannot be planned: it has no place on a calendar, it cannot clash with
+   anything, and it cannot fill a gap in a quarter. Every function that
+   reasons about WHEN starts by dropping those rows. The Conferences table
+   still shows them, with the date blank, which is the honest state. */
+const dated = confs => confs.filter(c => c.start && c.end);
 
 function efficiencyScore(c) {
   const days = daysOf(c);
@@ -169,6 +177,7 @@ const REGION_HUBS = { // crude but sufficient: same hub = one flight can cover b
 };
 
 function findClusters(confs, { maxGap = 10, maxSpan = 18, minTier = 45 } = {}, weights) {
+  confs = dated(confs);
   // Only cluster events that are individually worth some consideration -
   // otherwise the "trip" is padded with events nobody would attend.
   const worthy = confs
@@ -238,6 +247,7 @@ function findClusters(confs, { maxGap = 10, maxSpan = 18, minTier = 45 } = {}, w
    `minTier` is the same 65 the gap finder uses, so "worth attending" means
    one thing across the whole app.                                        */
 function coverageByPerson(confs, team, weights, { minTier = 65, quietDays = 120 } = {}) {
+  confs = dated(confs);
   const worth = confs
     .map(c => ({ c, s: scoreConference(c, weights) }))
     .filter(({ c, s }) => c.status === "Going" || (!s.unscored && s.total >= minTier))
@@ -276,6 +286,7 @@ function coverageByPerson(confs, team, weights, { minTier = 65, quietDays = 120 
 }
 
 function findGaps(confs, attending, weights, { minTier = 65, minEvents = 2, minMonths = 2 } = {}) {
+  confs = dated(confs);
   const scored = confs.map(c => ({ c, s: scoreConference(c, weights) }));
   const worthy = scored.filter(x => x.s.total >= minTier);
 
@@ -320,6 +331,7 @@ function findGaps(confs, attending, weights, { minTier = 65, minEvents = 2, minM
 }
 
 function findConflicts(confs, weights, minTier = 65) {
+  confs = dated(confs);
   // Two B-tier-or-better events in different cities on the same days is a real
   // decision. Two D-tier events clashing is not news.
   const s = confs.map(c => ({ c, s: scoreConference(c, weights) }))
@@ -335,6 +347,7 @@ function findConflicts(confs, weights, minTier = 65) {
 }
 
 function coverageByMonth(confs, attending) {
+  confs = dated(confs);
   const months = {};
   for (const c of confs) {
     const k = c.start.slice(0, 7);
