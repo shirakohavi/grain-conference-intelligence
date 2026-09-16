@@ -374,7 +374,9 @@ function drawConf(ai) {
         fmtRange(c), fmtPlace(c),
         c.audienceSize != null ? `~${c.audienceSize.toLocaleString()} attending` : "",
         `ticket ${eur(c.ticketEur)}`].filter(Boolean).join(" · ")}</div>
-    </div><button class="x" onclick="closeDrawer()">×</button></div>
+    </div><div class="row" style="gap:6px;flex-wrap:nowrap">
+      <button class="btn ghost sm" onclick="openEditConference('${c.id}')">Edit</button>
+      <button class="x" onclick="closeDrawer()">×</button></div></div>
     ${c.aiSourced ? `<div class="alert" style="margin-top:10px">
       <b>AI sourced.</b> Found by the weekly web search${
         c.discoveredAt ? ` on ${fmtDMY(c.discoveredAt.slice(0, 10))}` : ""}, not by a person.
@@ -384,9 +386,13 @@ function drawConf(ai) {
 
   /* ── an event nobody has assessed yet ─────────────────────────────── */
   if (s.unscored) {
-    const miss = [["audienceSize", "How many people attend"], ["icpDensity", WEIGHT_INFO.icpDensity.label],
+    const miss = [["audienceSize", "How many people attend"], ["ticketEur", "Ticket price, EUR"],
+                  ["icpDensity", WEIGHT_INFO.icpDensity.label],
                   ["seniority", WEIGHT_INFO.seniority.label], ["strategic", WEIGHT_INFO.strategic.label]]
-                 .filter(([k]) => c[k] == null || c[k] === "");
+                 /* A zero ticket counts as missing. A discovered event lands
+                    at zero because nothing filled it in, and a free event
+                    looks cheap per conversation, which flatters the score. */
+                 .filter(([k]) => c[k] == null || c[k] === "" || (k === "ticketEur" && !c[k]));
     return drawer(head, `
       <div class="alert warn">
         <b>Not scored yet.</b> Nobody has filled in the estimates.
@@ -398,9 +404,9 @@ function drawConf(ai) {
           <div style="padding:9px 0;border-top:1px solid var(--line)">
             <div class="spread" style="margin-bottom:5px">
               <span style="font-size:12.5px;font-weight:600">${esc(label)}</span></div>
-            ${k === "audienceSize"
-              ? `<input class="inp" type="number" placeholder="e.g. 2000"
-                   onchange="editEstimate('${c.id}','audienceSize',+this.value)">`
+            ${k === "audienceSize" || k === "ticketEur"
+              ? `<input class="inp" type="number" placeholder="${k === "ticketEur" ? "e.g. 900" : "e.g. 2000"}"
+                   onchange="editEstimate('${c.id}','${k}',+this.value)">`
               : `<div class="row" style="gap:9px;flex-wrap:nowrap">
                    <input type="range" min="0" max="100" value="50"
                      onchange="editEstimate('${c.id}','${k}',+this.value)">
@@ -503,7 +509,8 @@ async function editEstimate(id, key, value) {
   c[key] = value;
   drawConf(S.aiCache[`interp:${id}:${JSON.stringify(S.weights)}`]);
   const col = { icpDensity: "icp_density", seniority: "seniority",
-                strategic: "strategic", audienceSize: "audience_size" }[key];
+                strategic: "strategic", audienceSize: "audience_size",
+                ticketEur: "ticket_eur" }[key];
   if (!col) return;
   clearTimeout(_estTimer);
   _estTimer = setTimeout(async () => {
@@ -2049,10 +2056,32 @@ async function findConferences() {
 }
 
 function openAddConference() {
-  S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",
+  S.newConf = { editId: null,
+    name: "", start: "", end: "", city: "", country: "", region: "Europe",
     verticals: [], activations: [], audienceSize: 1000, ticketEur: 500,
     icpDensity: 50, seniority: 50, strategic: 50,
     status: "New", covering: [], datesConfirmed: true, note: "" };
+  drawAddConf();
+}
+
+/* Same form, loaded with what is already there. A conference the weekly
+   search found arrives with holes in it, and the ticket price is always one
+   of them, because pricing sits behind a registration page rather than on
+   the page a search engine returns. Nothing else in the tool could fill
+   that in, so an AI sourced event could never be scored honestly: a blank
+   ticket reads as a free one, and a free one looks cheap per conversation.
+   Every field is editable, on every event, not only the discovered ones. */
+function openEditConference(id) {
+  const c = confById(id); if (!c) return;
+  S.newConf = { editId: id,
+    name: c.name || "", start: c.start || "", end: c.end || "",
+    city: c.city || "", country: c.country || "", region: c.region || "Europe",
+    verticals: c.verticals || [], activations: c.activations || [],
+    audienceSize: c.audienceSize ?? "", ticketEur: c.ticketEur ?? 0,
+    icpDensity: c.icpDensity ?? 50, seniority: c.seniority ?? 50,
+    strategic: c.strategic ?? 50,
+    status: c.status || "New", covering: c.covering || [],
+    datesConfirmed: c.datesConfirmed !== false, note: c.note || "" };
   drawAddConf();
 }
 
@@ -2073,7 +2102,7 @@ function drawAddConf() {
       <div class="tiny dim" style="margin-top:2px">${help}</div>
     </div>`;
 
-  drawer(`<div class="spread"><h3 style="margin:0">Add a conference</h3>
+  drawer(`<div class="spread"><h3 style="margin:0">${d.editId ? "Edit conference" : "Add a conference"}</h3>
       <button class="x" onclick="S.newConf=null;closeDrawer()">×</button></div>
 `,
   `
@@ -2128,7 +2157,8 @@ function drawAddConf() {
     <div id="confprev">${confPreviewHTML()}</div>
 
     <div class="row">
-      <button class="btn" id="confsave" onclick="saveConference()" ${!(d.name && d.start && d.end) ? "disabled" : ""}>Add to the database</button>
+      <button class="btn" id="confsave" onclick="saveConference()" ${!d.name ? "disabled" : ""}>${
+        d.editId ? "Save changes" : "Add to the database"}</button>
       <button class="btn ghost" onclick="S.newConf=null;closeDrawer()">Cancel</button>
     </div>`);
 }
@@ -2158,23 +2188,33 @@ function confPreview() {
   const box = document.getElementById("confprev");
   if (box) box.innerHTML = confPreviewHTML();
   const save = document.getElementById("confsave");
-  if (save) save.disabled = !(d.name && d.start && d.end);
+  if (save) save.disabled = !d.name;
 }
 
 async function saveConference() {
   const d = S.newConf;
-  const id = d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)
-    + "-" + d.start.slice(2, 4);
+  const num = v => (v === "" || v == null ? null : +v);
+  const fields = {
+    name: d.name, start_date: d.start || null, end_date: d.end || d.start || null,
+    city: d.city || null, country: d.country || null, region: d.region,
+    verticals: d.verticals,
+    audience_size: num(d.audienceSize), ticket_eur: num(d.ticketEur) ?? 0,
+    icp_density: num(d.icpDensity), seniority: num(d.seniority),
+    strategic: num(d.strategic),
+    status: d.status, covering: d.covering || [], activations: d.activations || [],
+    dates_confirmed: d.datesConfirmed, note: d.note || null,
+  };
   try {
-    await DB.addConference({
-      id, name: d.name, start_date: d.start, end_date: d.end,
-      city: d.city, country: d.country, region: d.region, verticals: d.verticals,
-      audience_size: d.audienceSize, ticket_eur: d.ticketEur,
-      icp_density: d.icpDensity, seniority: d.seniority,
-      strategic: d.strategic,
-      status: d.status, covering: d.covering || [], activations: d.activations || [],
-      dates_confirmed: d.datesConfirmed, note: d.note,
-    });
+    if (d.editId) {
+      await DB.updateConference(d.editId, fields);
+      S.newConf = null; closeDrawer(); await reload();
+      toast(`${d.name} updated.`);
+      openConf(d.editId);          // back to the event you were reading
+      return;
+    }
+    const id = d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)
+      + "-" + (d.start ? d.start.slice(2, 4) : String(new Date().getFullYear()).slice(2));
+    await DB.addConference({ id, ...fields });
     S.newConf = null; closeDrawer(); await reload();
     toast(`${d.name} added.`);
   } catch (e) { toast("Couldn't save: " + e.message, true); }
