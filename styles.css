@@ -1,7 +1,7 @@
 /* Palette sampled from grainfinance.com's live stylesheet.
    Navy #2B3674 is their primary, #3D82F7 their accent blue, #A3AED0 the
    pale blue-grey they use for borders and secondary text.
-   Their typeface is Suisse Intl, which is commercial — Inter is the closest
+   Their typeface is Suisse Intl, which is commercial, and Inter is the closest
    free substitute and is what this uses. */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -11,13 +11,9 @@
   --line:#E9EDF7; --line2:#F1F4FB;
   --accent:#5B9FFF; --accent-soft:#EAF1FE; --accent-ink:#1B5FD9;
   --a:#2B3674; --b:#3D82F7; --c:#8D92B1; --d:#C9D0E3;
-  --hot:#D0342C; --warm:#B7791F; --cold:#8D92B1;
+  --hot:#D0342C; --warm:#B7791F; --cold:#2F6FD0;
   --good:#2B3674; --bad:#D0342C;
-  --r:8px;
-  --sh-base:0 1px 2px rgba(43,54,116,.03), 0 4px 12px rgba(43,54,116,.04);
-  --sh-hover:0 2px 8px rgba(43,54,116,.05), 0 12px 32px rgba(43,54,116,.06);
-  --sh-elevated:0 4px 16px rgba(43,54,116,.06), 0 16px 48px rgba(43,54,116,.08);
-  --sh:var(--sh-base);
+  --r:8px; --sh:0 1px 2px rgba(43,54,116,.05), 0 8px 24px rgba(43,54,116,.06);
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
   --spacing-xs:4px; --spacing-sm:8px; --spacing-md:12px; --spacing-lg:16px; --spacing-xl:24px;
 }
@@ -50,9 +46,7 @@ a{color:var(--accent)}
 .head p{margin:0;color:var(--ink2);font-size:13.5px;max-width:70ch;line-height:1.6}
 
 /* ── primitives ──────────────────────────────────────────────────────── */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);transition:all .2s cubic-bezier(0.32,0.72,0,1);opacity:0;animation:fadeUp .8s cubic-bezier(0.16,1,0.3,1) forwards}
-.card:hover{box-shadow:var(--sh-hover)}
-@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
 .pad{padding:16px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .spread{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -61,14 +55,13 @@ a{color:var(--accent)}
 .mono{font-family:var(--mono);font-size:12px}
 h3{font-size:14px;margin:0 0 10px;letter-spacing:-.1px;font-weight:600}
 h4{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin:0 0 8px;font-weight:700}
-.eyebrow{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;padding:2px 0}
 
-.btn{background:var(--ink);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;transition:all .2s cubic-bezier(0.32,0.72,0,1);position:relative}
-.btn:hover{background:#35417F;box-shadow:0 4px 12px rgba(43,54,116,.12)}
-.btn:active{transform:scale(0.96);box-shadow:0 2px 6px rgba(43,54,116,.08)}
+.btn{background:var(--ink);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;transition:all .12s cubic-bezier(0.16,1,0.3,1)}
+.btn:hover{background:#35417F}
+.btn:active{transform:scale(0.98)}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
-.btn.ghost:hover{background:var(--line2);border-color:var(--ink3);box-shadow:var(--sh-hover)}
+.btn.ghost:hover{background:var(--line2);border-color:var(--ink3)}
 .btn.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 .inp{border:1px solid var(--line);border-radius:8px;padding:9px 12px;background:#fff;width:100%;color:var(--ink);transition:.12s}
 .inp:hover{border-color:#D0D9E6}
@@ -103,30 +96,30 @@ tbody tr.picked{background:var(--accent-soft)}
   border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* ── filter bar: quiet inline controls with spring physics ───────────── */
-.filter-bar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line);margin-bottom:32px;opacity:0;animation:fadeUp .8s cubic-bezier(0.16,1,0.3,1) .1s forwards}
+/* ── filter bar: quiet inline controls ──────────────────────────────────── */
+.filter-bar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line);margin-bottom:24px}
 .filter-group{display:flex;gap:8px;align-items:center}
-.filter-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);white-space:nowrap}
-.filter-control{border:0;background:0;color:var(--ink);font-size:13px;padding:4px 8px;cursor:pointer;transition:all .2s cubic-bezier(0.32,0.72,0,1);border-bottom:2px solid transparent}
+.filter-label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);white-space:nowrap}
+.filter-control{border:0;background:0;color:var(--ink);font-size:13px;padding:4px 8px;cursor:pointer;transition:all .12s cubic-bezier(0.16,1,0.3,1);border-bottom:1px solid transparent}
 .filter-control:hover{color:var(--accent);border-bottom-color:var(--accent-soft)}
 .filter-control.active{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
-.filter-input{border:0;background:0;color:var(--ink);font-size:13px;padding:4px 0;border-bottom:2px solid var(--line);transition:.2s cubic-bezier(0.32,0.72,0,1)}
+.filter-input{border:0;background:0;color:var(--ink);font-size:13px;padding:4px 0;border-bottom:1px solid var(--line);transition:.12s}
 .filter-input:focus{outline:0;border-bottom-color:var(--accent)}
 .filter-stat{margin-left:auto;font-size:12px;color:var(--ink3)}
 
-/* ── contacts grid: Notion-style cards with premium elevation ────────── */
-.contacts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
-.contact-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;cursor:pointer;transition:all .2s cubic-bezier(0.32,0.72,0,1);display:flex;flex-direction:column;gap:12px;opacity:0;animation:fadeUp .8s cubic-bezier(0.16,1,0.3,1) forwards}
-.contact-card:hover{border-color:var(--accent);box-shadow:var(--sh-hover)}
-.contact-card h4{margin:0;font-size:14px;font-weight:600;color:var(--ink);line-height:1.4}
+/* ── contacts grid: Notion-style cards ──────────────────────────────── */
+.contacts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.contact-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;cursor:pointer;transition:all .12s cubic-bezier(0.16,1,0.3,1);display:flex;flex-direction:column;gap:8px}
+.contact-card:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(91,159,255,.08)}
+.contact-card h4{margin:0;font-size:14px;font-weight:600;color:var(--ink)}
 .contact-card .subtitle{font-size:12px;color:var(--ink3);line-height:1.4}
-.contact-meta{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--ink2);padding-bottom:12px;border-bottom:1px solid var(--line2)}
-.contact-signals{display:flex;gap:6px;flex-wrap:wrap}
-.contact-signal{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+.contact-meta{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink2);padding-bottom:8px;border-bottom:1px solid var(--line2)}
+.contact-signals{display:flex;gap:4px;flex-wrap:wrap}
+.contact-signal{display:inline-block;width:6px;height:6px;border-radius:50%;flex:none}
 .contact-signal.hot{background:var(--hot)}
 .contact-signal.warm{background:var(--warm)}
 .contact-signal.cold{background:var(--cold)}
-.contact-pattern{display:inline-block;font-size:10px;font-weight:600;padding:3px 10px;border-radius:12px;background:var(--line2);color:var(--ink2);transition:all .2s cubic-bezier(0.32,0.72,0,1)}
+.contact-pattern{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--line2);color:var(--ink2)}
 .contact-pattern.good{background:var(--accent-soft);color:var(--accent-ink)}
 .contact-pattern.bad{background:#fdf0ee;color:var(--bad)}
 
@@ -182,21 +175,354 @@ tbody tr.picked{background:var(--accent-soft)}
 
 @media(max-width:820px){
   .app{grid-template-columns:1fr}
-  .side{position:static;height:auto;flex-direction:row;overflow-x:auto;padding:8px}
+  .side{position:static;height:auto;flex-direction:row;overflow-x:auto;padding:10px}
   .brand{display:none}.side-foot{display:none}
-  .nav{width:auto;white-space:nowrap;padding:6px 8px;font-size:12.5px}
-  .main{padding:16px 12px}
-  .head{margin-bottom:20px}
-  .head h1{font-size:19px}
-  .head p{font-size:13px}
-  .filter-bar{gap:8px;padding:12px 0;margin-bottom:20px}
+  .nav{width:auto;white-space:nowrap}
+  .main{padding:16px}
+  .filter-bar{gap:8px}
   .filter-group{flex-direction:column;gap:4px;align-items:flex-start}
-  .filter-stat{margin-left:0;margin-top:8px;font-size:11px}
-  .months{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
-  .contacts-grid{grid-template-columns:1fr;gap:12px}
-  .contact-card{padding:16px;gap:10px}
-  .btn{width:100%;padding:11px 12px}
-  .btn.sm{width:auto}
-  table{font-size:12px}
-  th,td{padding:6px 8px}
+  .filter-stat{margin-left:0;margin-top:8px}
+  .months{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .contacts-grid{grid-template-columns:1fr}
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Merge layer, the database-view pieces, in the redesign's visual language.
+
+   Status stays a real <select> rather than a styled div: changing it writes
+   to Postgres, so it has to be an actual form control. It borrows the
+   redesign's soft-fill treatment instead of its dot, because a select can't
+   carry a pseudo-element reliably across browsers.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.status{appearance:none;border:0;cursor:pointer;border-radius:6px;padding:4px 24px 4px 9px;
+  font-size:12px;font-weight:600;line-height:1.5;letter-spacing:-.01em;transition:.12s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='currentColor' stroke-width='1.6' fill='none' stroke-linecap='round' opacity='.45'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center}
+.status:hover{filter:brightness(.97)}
+.status:focus{outline:2px solid var(--accent);outline-offset:1px}
+/* Status colours carry meaning: grey is untriaged, amber is undecided,
+   blue is committed, red is a deliberate no. Three of the four are decisions;
+   only grey means nobody has looked. */
+.st-New{background-color:#F1F3F9;color:#7A84A6}
+.st-Considering{background-color:#FCF3E4;color:#8A6516}
+.st-Going{background-color:#E3EDFD;color:#12509C}
+.st-Notgoing{background-color:#FCEEEC;color:#B03A2E}
+
+/* Tags: three colours only, so colour means vertical fit rather than decoration.
+   Blue = payments/fintech, sand = travel, grey = everything else. */
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:5px;padding:2px 7px;
+  font-size:11.5px;font-weight:500;line-height:1.5;white-space:nowrap;
+  background:#F1F3F9;color:#5C6590}
+.pill.blue{background:#E9F0FE;color:#1B5FD9}
+.pill.sand{background:#FBF3E7;color:#8A6516}
+.pill.warn{background:#FCF3E4;color:#8A6516}
+.pill.bad{background:#FCEEEC;color:#B03A2E}
+.pill.outline{background:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* The event name is the row's anchor, so give it room so it stops wrapping to
+   three lines, and let it read as the primary text. */
+.cell-name{font-weight:600;letter-spacing:-.012em;line-height:1.35;color:var(--ink)}
+th:first-child,td:first-child{min-width:250px}
+
+/* Icons in the nav, replacing the geometric symbols. */
+.nav .ic{width:16px;height:16px;flex:none;opacity:.8}
+.nav.on .ic{opacity:1}
+
+/* Provenance tag: where an event came from. Colour separates the three
+   automated routes from something a person typed in. */
+/* Provenance. The three automated routes each get their own colour so you can
+   see at a glance how much of the list a human actually chose. */
+.pill.src-Manual{background:#F1F3F9;color:#7A84A6}
+.pill.src-Slack{background:#E4F4EC;color:#1D7A52}
+.pill.src-Meetingnotes{background:#FBEFE4;color:#96551A}
+.pill.src-AIsearch{background:#EDE8FA;color:#5B3FA8}
+.pill.src-LinkedIn{background:#E3EDFD;color:#12509C}
+
+/* Activation: filled when a decision has been made, outlined when it has not. */
+.status.act-on{background-color:#EFE9FB;color:#5B3FA8}
+.status.act-off{background-color:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* A dense table is allowed to be wider than the page, but only inside its own
+   scroller. The page itself must never scroll sideways. */
+.tablewrap{overflow-x:auto}
+.tablewrap table{min-width:940px}
+th:first-child,td:first-child{min-width:220px}
+
+/* Grid columns refuse to shrink below their content unless min-width is
+   cleared. Without this the wide table pushes the whole page sideways
+   instead of scrolling inside its own container. */
+.grid > *{min-width:0}
+.main{min-width:0;overflow-x:hidden}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Year calendar
+
+   Events as bars on a shared timeline. Two bars covering the same days in
+   different cities is a clash you can see, which beats reading it as a
+   sentence and having to take it on trust.
+   ══════════════════════════════════════════════════════════════════════════ */
+.cal{font-size:12px}
+.cal-head{display:flex;align-items:flex-end;height:24px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.cal-head .cal-track{height:100%}
+.cal-label{width:250px;flex:none;padding-right:14px;display:flex;align-items:center;gap:8px;overflow:hidden}
+.cal-head .cal-label{border:0}
+.cal-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;font-size:12.5px}
+/* The track must fill the row's height, otherwise it collapses to zero and
+   the absolutely positioned bars drift off their labels. */
+.cal-track{position:relative;flex:1;min-width:0;height:100%;align-self:stretch}
+
+.cal-month{position:absolute;bottom:0;border-left:1px solid var(--line);padding-left:6px;
+  font-size:10.5px;color:#9AA3C4;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  display:flex;align-items:baseline;gap:4px;height:18px}
+.cal-month b{color:#C3CADF;font-weight:600}
+
+.cal-body{max-height:440px;overflow-y:auto;overflow-x:hidden}
+.cal-row{display:flex;align-items:stretch;height:30px;cursor:pointer;
+  border-bottom:1px solid var(--line-soft,#F2F5FB)}
+.cal-row:hover{background:#F6F8FD}
+.cal-grid{position:absolute;top:0;bottom:0;border-left:1px solid var(--line-soft,#F0F3FA)}
+.cal-today{position:absolute;top:0;bottom:0;width:1px;background:#F0A2A2;z-index:3}
+
+/* A three-day event inside a ten-month window is under one percent wide, so
+   it needs a floor to stay visible and clickable. */
+.cal-bar{position:absolute;top:6px;height:18px;min-width:26px;border-radius:4px;z-index:2;
+  display:flex;align-items:center;padding:0 7px;overflow:hidden;
+  transition:filter .12s, transform .12s}
+/* City name appears on hover: at this density it would be unreadable always-on. */
+.cal-bar span{font-size:10.5px;font-weight:600;white-space:nowrap;opacity:0;transition:opacity .1s}
+.cal-bar:hover{filter:brightness(.94);z-index:4;min-width:0;padding:0 8px}
+.cal-bar:hover span{opacity:1}
+
+
+/* Tier sets the colour; booked events are solid, the rest are washes. */
+.cal-bar.tA{background:#D3DEF6;color:#22306B}
+.cal-bar.tB{background:#DCE7FB;color:#1B5FD9}
+.cal-bar.tC{background:#E8EBF3;color:#5C6590}
+.cal-bar.tD{background:#F1F3F9;color:#9AA3C4}
+.cal-bar.on.tA{background:#2B3674;color:#fff}
+.cal-bar.on.tB{background:#3D82F7;color:#fff}
+.cal-bar.on.tC{background:#8D92B1;color:#fff}
+.cal-bar.on.tD{background:#C9D0E3;color:#2B3674}
+.cal-bar.clash{box-shadow:inset 0 0 0 1.5px #D0342C}
+
+.cal-key{gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+  font-size:11px;color:#9AA3C4}
+.cal-key span{display:inline-flex;align-items:center;gap:5px}
+.cal-key .k{width:14px;height:9px;border-radius:3px;display:inline-block}
+.cal-key .k.tA{background:#D3DEF6}.cal-key .k.tB{background:#DCE7FB}
+.cal-key .k.tC{background:#E8EBF3}.cal-key .k.tD{background:#F1F3F9}
+.cal-key .k.on{background:#2B3674}
+.cal-key .k.clash{background:#fff;box-shadow:inset 0 0 0 1.5px #D0342C}
+
+@media(max-width:900px){
+  .cal-label{width:140px;padding-right:8px}
+  .cal-name{font-size:11.5px}
+}
+
+/* ── How we show up: multi-select ──────────────────────────────────────
+   A native <select multiple> needs cmd-click to deselect and nobody finds
+   that. This is a button showing the chosen pills, opening a checkbox list. */
+.actbtn{background:transparent;border:1px dashed var(--line);border-radius:6px;padding:3px 7px;
+  cursor:pointer;display:flex;gap:3px;flex-wrap:wrap;align-items:center;width:100%;
+  min-height:26px;text-align:left;font-size:11.5px;transition:.12s}
+.actbtn:hover{border-color:var(--accent);background:#F7FAFF}
+.actbtn.on{border-style:solid;border-color:transparent;background:transparent}
+.pill.act{background:#EDE8FA;color:#5B3FA8;font-weight:500}
+
+.actscrim{position:fixed;inset:0;z-index:50}
+.actpop{position:fixed;z-index:51;background:#fff;border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 2px 6px rgba(43,54,116,.08),0 12px 36px rgba(43,54,116,.14);
+  padding:6px;width:236px;max-height:330px;overflow:auto}
+.actpop-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9AA3C4;
+  font-weight:600;padding:6px 9px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.actopt{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer;font-size:12.5px}
+.actopt:hover{background:#F4F7FE}
+.actopt input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+.actpop-f{font-size:10.5px;color:#9AA3C4;line-height:1.5;padding:8px 9px 4px;
+  border-top:1px solid var(--line);margin-top:4px}
+
+/* Signal inbox counters */
+.stat{flex:1;min-width:0;padding:13px 15px}
+.stat b{display:block;font-size:23px;font-weight:600;letter-spacing:-.03em;line-height:1.15}
+.stat span{font-size:11.5px;color:#9AA3C4}
+.stat.warn{background:#FCF3E4;border-color:#EFDFC0}
+.stat.warn b{color:#8A6516}
+.stat.good{background:#E9F0FE;border-color:#CBDCFB}
+.stat.good b{color:#12509C}
+
+/* ══════════════════════════════════════════════════════════════════
+   Rebuild layer: dropdown filters, unscored events, weight explainers,
+   sortable contact table. Grain palette only, no new colours.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Filters are all selects now, so give them a real control shape. */
+.filter-bar select.filter-control{
+  border:1px solid var(--line);border-radius:7px;padding:6px 26px 6px 10px;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238D92B1' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center;
+  appearance:none;-webkit-appearance:none;color:var(--ink2);max-width:190px}
+.filter-bar select.filter-control:hover{border-color:var(--accent);color:var(--ink)}
+.filter-bar select.filter-control:focus{outline:0;border-color:var(--accent)}
+
+/* An event nobody has scored yet. Amber, not red: it is unfinished, not broken. */
+.tier.Q{background:#fff;color:#9a6b1f;border:1.5px dashed #e0b76a}
+tr.needs{background:#fffaf0}
+tr.needs:hover{background:#fef5e4}
+tr.needs td:first-child{box-shadow:inset 3px 0 0 #e0b76a}
+.cal-bar.tQ{background:repeating-linear-gradient(45deg,#f7e8c9,#f7e8c9 5px,#fdf4e4 5px,#fdf4e4 10px);color:#9a6b1f}
+
+.needbar{display:flex;align-items:center;gap:9px;width:100%;margin:-12px 0 18px;
+  padding:10px 13px;border:1px solid #e8d5a8;background:#fefcf6;border-radius:var(--r);
+  font:inherit;font-size:13px;color:#8a6420;cursor:pointer;text-align:left}
+.needbar:hover{background:#fdf7ea}
+.needdot{width:7px;height:7px;border-radius:50%;background:#e0b76a;flex:none}
+
+/* Weight rows: name, one-line meaning, slider, and a click-to-open explainer. */
+.wrow{padding:10px 0;border-top:1px solid var(--line)}
+.wrow:first-of-type{border-top:0}
+.wrow input[type=range]{width:100%;accent-color:var(--accent);margin-top:6px}
+.wname{border:0;background:0;padding:0;font:inherit;font-size:12.5px;font-weight:600;
+  color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.wname:hover{color:var(--accent)}
+.winfo{width:14px;height:14px;border-radius:50%;border:1px solid var(--line);
+  display:inline-grid;place-items:center;font-size:9px;font-weight:700;color:var(--muted)}
+.wrow.open .winfo{background:var(--accent);border-color:var(--accent);color:#fff}
+.wexp{margin-top:7px;padding:9px 11px;background:var(--bg);border-radius:8px}
+.wexp p{margin:0 0 5px;font-size:12px;line-height:1.6;color:var(--ink2)}
+
+/* Sortable headers on the contacts table. */
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--accent)}
+th.sorted{color:var(--accent)}
+
+/* Status dropdown inside a calendar row label. */
+.calstatus{margin-left:auto;font-size:11px;padding:2px 6px}
+.cal-label .cal-name{cursor:pointer}
+.cal-label .cal-name:hover{color:var(--accent)}
+
+/* Weights as one strip above the table, so the table gets the full width. */
+.wstrip-head{margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.wgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.wgrid > .wrow{padding:0;border-top:0}
+.wgrid .wexp{margin-top:0}
+.wstrip .wexp{margin-top:14px}
+.wstrip .wexp b{font-size:12.5px;display:block;margin-bottom:3px}
+@media(max-width:900px){.wgrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.wgrid{grid-template-columns:1fr}}
+
+/* A text button that reads as a link, used to cross between records. */
+.linkbtn{border:0;background:0;padding:0;font:inherit;font-size:13px;font-weight:650;
+  color:var(--accent);cursor:pointer;text-align:left}
+.linkbtn:hover{text-decoration:underline}
+
+/* The note a rep actually wrote, given room to be read. */
+.mnote{margin-top:7px;padding:9px 11px;background:var(--bg);border-radius:8px;
+  font-size:12.5px;line-height:1.65;color:var(--ink2)}
+
+/* Calendar: a year band above the months, so a plan spanning two years reads. */
+.cal-year{position:absolute;top:0;font-size:11px;font-weight:700;letter-spacing:.08em;
+  color:var(--muted);border-left:1px solid var(--line);padding-left:7px;white-space:nowrap}
+.cal-bar.clust{outline:1.5px dotted var(--accent);outline-offset:1px}
+.k.clust{outline:1.5px dotted var(--accent);outline-offset:1px;background:transparent}
+
+/* Cluster and gap boxes under the calendar. */
+.boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.box{align-self:start}
+.box.gap{border-color:#e8d5a8;background:#fefcf6}
+.boxrow{display:flex;align-items:center;gap:8px;width:100%;padding:6px 0;border:0;background:0;
+  border-top:1px solid var(--line);font:inherit;font-size:12.5px;color:var(--ink);
+  cursor:pointer;text-align:left}
+.boxrow:hover .boxname{color:var(--accent)}
+.boxname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Lead status, the tool's own pipeline. Ends at the HubSpot handoff. */
+.status.ls-New{background:#F1F3F9;color:#7A84A6}
+.status.ls-Contacted{background:#E3EDFD;color:#12509C}
+.status.ls-Qualified{background:#E4F4EC;color:#1D7A52}
+.status.ls-Notafit{background:#F5F0F0;color:#96605A}
+
+/* The plain relationship summary at the top of a contact. */
+.summary{background:var(--accent-soft);border-radius:var(--r);padding:14px 16px;
+  font-size:13.5px;line-height:1.75;color:var(--ink)}
+
+/* Conferences as tags in the Where column. */
+.pill.conftag{border:0;font:inherit;font-size:11px;font-weight:600;cursor:pointer;
+  background:var(--line2);color:var(--ink2);max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.pill.conftag:hover{background:var(--accent-soft);color:var(--accent-ink)}
+
+/* The rule that produced a set of boxes, stated beside them. */
+.rule{font-size:11.5px;color:var(--muted);text-align:right;max-width:52ch;line-height:1.5}
+
+/* Single-month view: a day axis instead of a month axis. */
+.cal-day{position:absolute;top:0;font-size:9.5px;color:var(--muted);text-align:center;
+  border-left:1px solid var(--line-soft);overflow:hidden}
+
+/* Bigger calendar. Taller rows and thicker bars, so the timeline is the thing
+   on the page rather than a strip above the boxes. */
+.cal-row{height:44px}
+.cal-bar{top:9px;height:26px;min-width:30px;font-size:11.5px}
+.cal-body{max-height:none}
+.cal-label{width:290px}
+.cal-name{font-size:13.5px}
+.cal-head{height:26px}
+.cal-month span{font-size:11.5px}
+.cal-day{font-size:10.5px;padding-top:2px}
+@media(max-width:980px){.cal-label{width:170px}}
+
+/* Contacts: the email is reference, not headline. One line for the date. */
+td.email{font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace);
+  font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nowrap{white-space:nowrap}
+
+/* A long conference name must not widen its column. Truncate, full name on hover. */
+.pill.conftag{max-width:136px;display:inline-block;vertical-align:bottom}
+
+/* Declared column widths win, so one long name cannot push the table wider
+   than its card. Anything too long truncates instead. */
+table.fixed{table-layout:fixed;width:100%}
+table.fixed td{overflow:hidden;text-overflow:ellipsis}
+table.fixed td .cell-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.fixed .status{max-width:100%}
+/* The lead status dropdown was wide enough to squeeze the signal column until
+   WARM was clipped to WA. Tighter chrome on the dropdown, and a signal that
+   never wraps or truncates. */
+table.fixed .status{padding-right:18px;padding-left:7px;background-position:right 5px center}
+table.fixed .sig{white-space:nowrap}
+
+/* Auto push: a real button, greyed, because pressing it is optional. */
+.btn.auto{background:var(--line2);color:var(--muted);border:1px solid var(--line);font-weight:600;white-space:nowrap}
+.btn.auto:hover{background:var(--line);color:var(--ink2)}
+
+/* Settings drops to the bottom of the nav. */
+.nav.last{margin-top:auto}
+nav#nav{display:flex;flex-direction:column;flex:1;min-height:0}
+
+/* Score and tier, nothing else. */
+.scorebar{display:flex;align-items:baseline;gap:12px;background:var(--accent-soft);
+  padding:14px 16px;border-radius:9px}
+.scorebar .tier{width:28px;height:28px;font-size:14px;align-self:center}
+.scorebig{font-size:34px;font-weight:800;color:var(--accent-ink);line-height:1}
+
+/* Source labels carry the same colour in the dropdown as they did as pills. */
+.status.src-Manual{background:#F1F3F9;color:#7A84A6}
+.status.src-Slack{background:#E4F4EC;color:#1D7A52}
+.status.src-Meetingnotes{background:#FBEFE4;color:#96551A}
+.status.src-AIsearch{background:#EDE8FA;color:#5B3FA8}
+.status.src-LinkedIn{background:#E3EDFD;color:#12509C}
+
+/* Cluster and gap cards: the title gets its own line so a long one cannot
+   shove the pill down and leave the row of cards misaligned. */
+.boxtitle{font-size:14px;font-weight:700;color:var(--ink);line-height:1.35;
+  min-height:2.7em;display:flex;align-items:flex-start}
+.boxmeta{align-items:center;gap:10px;margin:2px 0 10px;padding-bottom:9px;
+  border-bottom:1px solid var(--line)}
+.boxmeta .pill{flex:none}
+.box .boxrow:first-of-type{border-top:0}
+
+/* A selected chip had no style of its own, so picking one looked exactly like
+   hovering it and nothing appeared to happen. */
+.chip.on{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent-ink);font-weight:600}
+.chip.on:hover{border-color:var(--accent);color:var(--accent-ink)}
