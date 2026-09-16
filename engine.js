@@ -619,7 +619,10 @@ const SEGMENT_FIT = {
 /* Titles are free text written by a rep on a show floor, so this matches the
    words that actually appear rather than pretending there is a taxonomy. */
 const ROLE_BANDS = [
-  [/\b(founder|co-?founder|ceo|cfo|coo|cto|chief|owner|president|managing director)\b/i, 100],
+  /* The C-suite has more than four letters in it. CPO, CRO and CBO turn up
+     on show floors as often as CFO, and falling through to the generic
+     score made a chief product officer read as a coordinator. */
+  [/\b(founder|co-?founder|c[eforbimpts]o|chief|owner|president|managing director|partner)\b/i, 100],
   [/\b(vp|vice.president|svp|evp)\b/i, 90],
   [/\b(head of|director|gm|general manager)\b/i, 78],
   [/\b(lead|principal|senior manager)\b/i, 55],

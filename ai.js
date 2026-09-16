@@ -170,16 +170,23 @@ Return {"verdict":"same"|"different"|"unsure","confidence":0-100,
   }
 
   /* ── 3. RELATIONSHIP ARC ────────────────────────────────────────────────
-     Why AI: the verdict is arithmetic and engine.js has already decided it.
-     The model is told the answer and never gets a vote, so the label on
+     Why AI: the lead status is arithmetic and engine.js has already decided
+     it. The model is told the answer and never gets a vote, so the label on
      screen stays reproducible. What it does instead is the part no rule can
-     do: read three sets of scrappy human notes, work out what actually moved,
-     and write the email that uses it.
+     do: read scrappy human notes, work out what actually matters, and write
+     the email that uses it.
 
-     The draft is written, never sent. A tool that emails prospects on its own
-     is a tool nobody deploys, HubSpot owns sequences, and the one action that
-     touches a customer keeps a human on it.                              */
-  async function relationshipArc(contact) {
+     It runs after EVERY meeting, including the first. The most valuable
+     follow-up a rep ever sends is the one on the evening they met someone,
+     and a tool that only speaks up when something has gone wrong misses it.
+     A first meeting gets a different job from a fourth: introduce and book
+     time, rather than read an arc that does not exist yet.
+
+     The draft is written, never sent. A tool that emails prospects on its
+     own is a tool nobody deploys, HubSpot owns sending, and the one action
+     that touches a customer keeps a human on it.                        */
+  async function relationshipArc(contact, rep = {}) {
+    const first = contact.touches === 1;
     const history = contact.encounters.map((e, i) =>
       `${i + 1}. ${e.at.slice(0, 10)} · ${e.confName} · met by ${e.rep} · signal: ${e.intent}
    as: ${e.name}, ${e.title} at ${e.company}
@@ -192,13 +199,24 @@ Return {"verdict":"same"|"different"|"unsure","confidence":0-100,
       contact.everHot ? "was hot at some point" : "has never once been hot",
     ].filter(Boolean).join(" · ");
 
+    const signing = rep.name
+      ? `The email is from ${rep.name}, who logged the meeting.`
+      : "The email is from the rep who logged the meeting.";
+    const cal = rep.calendar
+      ? `Their booking link is ${rep.calendar}. Put it in the body, on its own line, exactly as written.`
+      : "They have no booking link set, so ask for a time instead of offering one.";
+
     return call(
       `${GRAIN}
-You brief a rep on a contact they have met more than once, then draft the follow-up email for them.
-The rep is between meetings. They will read the brief in ten seconds and edit the email in thirty.`,
+${first
+  ? "You write the follow-up a rep sends the evening they met someone for the first time. Warm, short, specific to what was actually said, and it asks for time."
+  : "You brief a rep on a contact they have met more than once, then draft the follow-up. The rep reads the brief in ten seconds and edits the email in thirty."}
+${signing} ${cal}`,
       `Contact: ${contact.name}, currently ${contact.title} at ${contact.company}
-Met ${contact.touches} times over ${contact.spanDays} days. Last seen ${contact.daysSince} days ago.
-Verdict, already decided by rule, do not argue with it: ${contact.verdict}
+${first
+  ? `Met once, ${contact.daysSince} days ago.`
+  : `Met ${contact.touches} times over ${contact.spanDays} days. Last seen ${contact.daysSince} days ago.`}
+Lead status, already decided by rule, do not argue with it: ${contact.verdict}
 Because: ${contact.test}
 ${flags}
 
@@ -209,13 +227,18 @@ something changed, say the notes do not say. A job change, a budget, a date
 or a competitor that is not written above does not exist.
 
 Return JSON:
-{"arc": one sentence on what has actually changed across these meetings. Cite the specific detail that moved. If nothing moved, say that.,
- "why": one sentence on what the verdict means commercially. Be blunt. If they are a tire-kicker, say so in those words.,
+{"arc": ${first
+  ? "one sentence on what they actually said at this first meeting, quoting the specific thing"
+  : "one sentence on what has actually changed across these meetings, citing the detail that moved. If nothing moved, say that"},
+ "why": one sentence on what this means commercially. Be blunt. If they are a tire-kicker, say so in those words.,
  "nudge": the exact next action, specific enough to do today, naming the hook from the notes. Never "follow up" or "check in".,
- "avoid": one thing NOT to do with this person, drawn from the history,
+ "avoid": one thing NOT to do with this contact, drawn from what is above,
  "email": {
    "subject": under 60 characters, no colon-heavy marketing phrasing, reads like a person wrote it,
-   "body": "3 to 5 short sentences. Open by referencing the specific thing THEY said, quoting their own words where you can. Make one concrete ask. No pleasantries about hoping they are well, no company boilerplate, no bullet points, no signature block. Plain text."
+   "body": "${first
+     ? "3 to 4 short sentences. Open by naming where you met and the specific thing THEY said. Say in one line what Grain does about exactly that problem, not in general. Then offer time and put the booking link on its own line."
+     : "3 to 5 short sentences. Open by referencing the specific thing THEY said, quoting their own words where you can. Make one concrete ask, and include the booking link on its own line if there is a reason to meet."}
+     No pleasantries about hoping they are well, no company boilerplate, no bullet points, no signature block. Plain text."
  }}`, { task: "relationshipArc" });
   }
 

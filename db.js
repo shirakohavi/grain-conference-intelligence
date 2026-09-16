@@ -65,7 +65,8 @@ const DB = (() => {
       leads: l.data,
       encounters: e.data.map(r => toEnc(r, leadById)),
       team: t.data.map(r => ({ id: r.id, name: r.full_name,
-        initials: r.initials, region: r.home_region, active: r.active })),
+        initials: r.initials, region: r.home_region, active: r.active,
+        calendar: r.calendar_link || "" })),
     };
   }
 

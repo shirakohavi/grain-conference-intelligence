@@ -71,13 +71,41 @@ const DEMO = {
      Settings" and put "demo mode has no model" in the email body, which put
      the word demo in the middle of a sales brief. The card carries a badge
      instead. Every sentence below stands on its own and is true. */
-  arc(c) {
+  arc(c, rep = {}) {
     const canned = DEMO.arcs[c.name];
     if (canned) return { ...canned, __demo: true };
 
-    const first = c.encounters[0], last = c.encounters[c.encounters.length - 1];
+    const firstE = c.encounters[0], last = c.encounters[c.encounters.length - 1];
     const name = c.name.split(" ")[0];
     const n = c.touches;
+    const link = rep.calendar ? `\n${rep.calendar}\n` : "\n";
+    const said = last.note ? `"${last.note}"` : "";
+
+    /* A first meeting has no arc to read. Its job is to introduce and book
+       time while the conversation is still warm, which is a different email
+       from the one a fourth meeting needs. */
+    if (n === 1) {
+      return {
+        __demo: true,
+        arc: said
+          ? `One meeting, at ${firstE.confName}. They said ${said}.`
+          : `One meeting, at ${firstE.confName}. Nothing was written down about what they said.`,
+        why: last.intent === "hot"
+          ? "They named something concrete on the first meeting. The risk here is being slow, not being wrong."
+          : last.intent === "warm"
+          ? "They told you a problem on the first meeting. That is worth a proper conversation while they still remember you."
+          : "Nothing named yet. One specific question is worth more than a pitch.",
+        nudge: `Write to ${name} today, while ${firstE.confName} is still fresh, and offer a time.`,
+        avoid: "Do not send a deck first. Nobody opens a deck from someone they met once.",
+        email: {
+          subject: `Good to meet you at ${firstE.confName}`,
+          body: `Good to meet you at ${firstE.confName}.`
+              + (last.note ? `\nYou mentioned ${said.toLowerCase()}, and that is the part I would like to pick up.` : "")
+              + `\nGrain takes the FX risk off platforms so their customers never carry it, which is usually the quickest thing to show rather than describe.`
+              + `\nAre you free for 20 minutes in the next couple of weeks?${link}`,
+        },
+      };
+    }
 
     const why = c.verdict === "Dormant" && c.overdue
         ? `They have gone past their own usual gap of ${c.usualGapDays} days without a word. That is where a relationship quietly ends.`
@@ -101,17 +129,14 @@ const DEMO = {
 
     return {
       __demo: true,
-      arc: n === 1
-        ? `One meeting, at ${first.confName}. Nothing to compare it to yet.`
-        : `${n} meetings between ${first.confName} and ${last.confName}. ${c.test}`,
-      why,
-      nudge,
+      arc: `${n} meetings between ${firstE.confName} and ${last.confName}. ${c.test}`,
+      why, nudge,
       avoid: "Do not send a generic check-in. It is the message that ends these.",
       email: {
         subject: `Following up from ${last.confName}`,
-        body: `We spoke at ${last.confName} and I have been thinking about what you said.\n`
-            + `${last.note ? `You mentioned: "${last.note}"` : "I wanted to pick up where we left off."}\n`
-            + `Is there a good 20 minutes in the next two weeks to go through it properly?`,
+        body: `We spoke at ${last.confName} and I have been thinking about what you said.`
+            + (last.note ? `\nYou mentioned ${said.toLowerCase()}` : "")
+            + `\nIs there a good 20 minutes in the next two weeks to go through it properly?${link}`,
       },
     };
   },

@@ -626,10 +626,40 @@ function clearRepFilter(store) {
    A prospect whose segment nobody has set is NOT "Low": that would be a
    verdict we have not earned. It reads as unknown, same principle as an
    unscored conference. */
-function icpPill(f) {
+function icpPill(f, { ask = false } = {}) {
   if (!f) return `<span class="dim tiny">-</span>`;
-  if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this lead yet, so this is a guess from the role alone.">not set</span>`;
-  return `<span class="pill icp ${f.band}" title="${esc(f.why)} Scores ${f.score} out of 100.">${f.band}</span>`;
+  if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this contact yet, so there is nothing to score against.">not set</span>`;
+  return `<span class="pill icp ${f.band}">${f.band}</span>${ask ? icpAsk(f) : ""}`;
+}
+
+/* A band with no arithmetic behind it is a number somebody has to take on
+   trust. A tooltip is not enough: it does not survive a screenshot and it
+   does not exist on a tablet. So the explanation is a real panel, on a real
+   button, closed by default. */
+const icpAsk = f => `<button class="askbtn" title="How is this worked out?"
+  onclick="event.stopPropagation();openIcpWhy(${JSON.stringify(JSON.stringify(f)).replace(/"/g, "&quot;")}, event)">?</button>`;
+
+function openIcpWhy(json, ev) {
+  ev.stopPropagation();
+  closeIcpWhy();
+  const f = JSON.parse(json);
+  const r = ev.currentTarget.getBoundingClientRect();
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="actscrim" onclick="closeIcpWhy()"></div>
+     <div class="actpop why" id="icpwhy" style="top:${Math.min(r.bottom + 6, innerHeight - 260)}px;left:${Math.max(12, r.left - 190)}px">
+       <div class="actpop-h">ICP fit: ${esc(f.band)}, ${f.score} out of 100</div>
+       <div class="whyrow"><span>Company</span>
+         <b>${f.companyFit}</b><i>counts for 70%</i></div>
+       <div class="whyrow"><span>Role</span>
+         <b>${f.roleFit}</b><i>counts for 30%</i></div>
+       <div class="whysum">${f.companyFit} × 0.7 + ${f.roleFit} × 0.3 = ${f.score}</div>
+       <div class="actpop-f">80 and above is High. 50 to 79 is Medium. Below 50 is Low.
+         Company fit comes from the ICP segment, role fit from the job title.</div>
+     </div>`);
+}
+function closeIcpWhy() {
+  document.getElementById("icpwhy")?.remove();
+  document.querySelector(".actscrim")?.remove();
 }
 
 function sizePill(n) {
@@ -1093,7 +1123,7 @@ VIEWS_CONTACTS = () => {
     </select>
     <select class="filter-control" onchange="CF.nudge=this.value;render()">
       <option value="">Everyone</option>
-      <option value="1"${CF.nudge ? " selected" : ""}>Needs a nudge (${rows.filter(r => r.needsNudge).length})</option>
+      <option value="1"${CF.nudge ? " selected" : ""}>Needs attention (${rows.filter(r => r.needsNudge).length})</option>
     </select>
     <div class="seg">
       <button class="segbtn ${CF.group ? "" : "on"}" onclick="setGrouped(false)">Contacts</button>
@@ -1129,7 +1159,7 @@ VIEWS_CONTACTS = () => {
         </td>
         <td class="tiny">${esc(r.company || "")}
           ${r.changedCompany ? `<div class="pill warn">changed employer</div>` : ""}</td>
-        <td>${icpPill(r.icp)}</td>
+        <td>${icpPill(r.icp, { ask: true })}</td>
         <td><b class="mono">${r.met}</b></td>
         <td onclick="event.stopPropagation()">
           <div class="tags">
@@ -1169,7 +1199,7 @@ function groupedTable(rows) {
         </div></td>
         <td><span class="pill rel-${g.best}">${esc(g.best)}</span>
           ${g.rows.length > 1 ? `<span class="tiny dim">best of ${g.rows.length}</span>` : ""}</td>
-        <td>${icpPill(g.icp)}</td>
+        <td>${icpPill(g.icp, { ask: true })}</td>
         <td><b class="mono">${g.met}</b></td>
         <td class="tiny muted">${g.events} event${g.events === 1 ? "" : "s"}${
           g.last ? ` · last ${fmtDMY(g.last.at)}` : ""}</td>
@@ -1185,7 +1215,7 @@ function groupedTable(rows) {
               title="${esc(r.test)}" onchange="setRelationship('${r.leadId}', this.value)">
               ${LEAD_STATUS.map(o => `<option${r.relationship === o ? " selected" : ""}>${o}</option>`).join("")}
             </select></td>
-          <td>${icpPill(r.icp)}</td>
+          <td>${icpPill(r.icp, { ask: true })}</td>
           <td><b class="mono">${r.met}</b></td>
           <td class="tiny muted">${r.last ? `${fmtDMY(r.last.at)} · ${r.daysAgo}d ago` : "not met yet"}</td>
           <td>${peopleCell(r.repIds, { empty: "-" })}</td>
@@ -1490,20 +1520,27 @@ const initialsOf = n => String(n || "").trim().split(/\s+/).slice(0, 2)
   .map(w => w[0] || "").join("").toUpperCase() || "?";
 
 /* ── THE ARC ───────────────────────────────────────────────────────────
-   The verdict above is a rule and is always on screen. This is the part a
-   rule cannot do, so it is the part that costs a model call, and it is only
-   offered when engine.js says something actually happened. A Warming contact
-   inside their normal rhythm gets the facts and silence, which is most of
-   the list and is the whole answer to "too aggressive is noise". */
+   Runs on every contact with a meeting behind them, including the first. An
+   earlier build only offered it when a rule said something had changed, which
+   was the wrong instinct: the most valuable follow-up a rep ever sends is the
+   one on the evening they met someone, and gating the feature on "something
+   went wrong" hid it exactly then.
+
+   The amber dot in the table is a separate thing and keeps its own job:
+   something changed and this contact needs chasing. Arc on everyone, dot on
+   the ones that need attention. */
 function arcBlock(c) {
-  if (!c.needsNudge) return "";
+  if (!c.encounters.length) return "";
   const got = S.aiCache[`arc:${c.id}`];
+  const first = c.touches === 1;
   return `<div class="card pad arccard">
     <div class="spread">
-      <div><h4 style="margin:0">What to do about it</h4>
-        <div class="tiny dim" style="margin-top:2px">${esc(c.nudgeReason)}</div></div>
+      <div><h4 style="margin:0">${first ? "Follow up" : "What to do about it"}</h4>
+        <div class="tiny dim" style="margin-top:2px">${esc(c.nudgeReason
+          || (first ? `First meeting, ${c.daysSince === 0 ? "today" : c.daysSince + " days ago"}`
+                    : `${c.touches} meetings on record`))}</div></div>
       ${got ? "" : `<button class="btn sm" onclick="askArc('${c.id}')" id="arcbtn">${
-        S.busy["arc" + c.id] ? "Reading the notes…" : "Read the notes"}</button>`}
+        S.busy["arc" + c.id] ? "Reading the notes…" : first ? "Draft the follow-up" : "Read the notes"}</button>`}
     </div>
     <div id="arcout">${got ? arcHTML(got) : ""}</div>
   </div>`;
@@ -1544,7 +1581,10 @@ async function askArc(id) {
   S.busy["arc" + id] = true;
   const btn = document.getElementById("arcbtn");
   if (btn) { btn.textContent = "Reading the notes…"; btn.disabled = true; }
-  const a = await ask(`arc:${id}`, () => AI.relationshipArc(c), () => DEMO.arc(c));
+  /* Signed by whoever logged the last meeting, because it is their calendar
+     link going in the body and their name at the bottom of it. */
+  const rep = teamByName(c.encounters[c.encounters.length - 1].rep) || {};
+  const a = await ask(`arc:${id}`, () => AI.relationshipArc(c, rep), () => DEMO.arc(c, rep));
   S.busy["arc" + id] = false;
   const out = document.getElementById("arcout");
   if (out) { out.innerHTML = arcHTML(a); btn?.remove(); }
@@ -1668,14 +1708,14 @@ function buildPayload(c) {
     /* No recipient field: hs_email_to_email is read only in HubSpot, tested
        rather than assumed. HubSpot addresses the draft from the contact the
        email is associated to, so the association is what carries it. */
-    draft: (c.needsNudge && arc && arc.email && arc.email.body) ? {
+    draft: (arc && arc.email && arc.email.body) ? {
       subject: arc.email.subject || `Following up from ${last.confName}`,
       body: arc.email.body,
     } : null,
 
-    internalNote: (c.needsNudge && arc) ? {
+    internalNote: arc ? {
       body: [
-        `Why now: ${c.nudgeReason}.`,
+        c.nudgeReason ? `Why now: ${c.nudgeReason}.` : `${c.touches} meeting${c.touches === 1 ? "" : "s"} on record.`,
         arc.arc ? `What changed: ${arc.arc}` : "",
         arc.why ? `Read: ${arc.why}` : "",
         arc.nudge ? `Next step: ${arc.nudge}` : "",

@@ -670,3 +670,18 @@ tr.kid td:first-child{padding-left:28px}
 .pill.rel-Developing{background:#EAF1FE;color:#1B5FD9}
 .pill.rel-Active{background:#E4F4EC;color:#14664E}
 .pill.rel-Dormant{background:#FBF0DC;color:#8A5A0B}
+
+/* The ICP band needs its arithmetic reachable. A tooltip does not survive a
+   screenshot and does not exist on a tablet, so this is a real button. */
+.askbtn{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink3);font-size:10px;font-weight:700;line-height:1;
+  cursor:pointer;margin-left:5px;padding:0;vertical-align:middle}
+.askbtn:hover{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+.actpop.why{width:290px}
+.whyrow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:baseline;
+  padding:7px 12px;border-top:1px solid var(--line2)}
+.whyrow span{font-size:12.5px;color:var(--ink2)}
+.whyrow b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
+.whyrow i{font-style:normal;font-size:11px;color:var(--ink3);min-width:86px;text-align:right}
+.whysum{padding:8px 12px;border-top:1px solid var(--line2);font-size:12.5px;
+  color:var(--ink);font-variant-numeric:tabular-nums}
