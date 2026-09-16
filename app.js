@@ -1460,7 +1460,11 @@ function drawContact(c) {
         <select class="status rel-${rel}" onchange="setRelationship('${leadId}', this.value);openContact('${c.id}')">
           ${LEAD_STATUS.map(o => `<option${rel === o ? " selected" : ""}>${o}</option>`).join("")}
         </select>
-        <span class="sig ${c.encounters[c.encounters.length - 1].intent}">${c.encounters[c.encounters.length - 1].intent}</span>
+        ${/* No contact-level signal here. hot, warm and cold describe a single
+             meeting, and rolling the last one up to the person was the same
+             mistake the Signal column made: it competed with the lead status
+             beside it. The per-meeting marks below are where it belongs,
+             because three colds in a row is the evidence for Dormant. */""}
         <span class="pill">${met} meeting${met === 1 ? "" : "s"}</span>
       </div>
       <div class="row" style="margin-top:9px;gap:7px">
