@@ -1867,7 +1867,7 @@ async function testProxy() {
   try {
     const r = await fetch(base.replace(/\/+$/, "") + "/webhook/grain-ai", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ task: "ask", system: "Reply with JSON only.", prompt: 'Return {"ok":true}' }),
+      body: JSON.stringify({ task: "interpretScore", system: "Reply with JSON only.", prompt: 'Return {"ok":true}' }),
     });
     const body = await r.text();
     el.innerHTML = r.ok
@@ -1883,7 +1883,7 @@ async function testKey() {
   const el = document.getElementById("keytest");
   el.innerHTML = `<span class="spin"></span> Testing…`;
   try {
-    const r = await AI.call("Reply with JSON only.", 'Return {"ok":true}', { maxTokens: 32 });
+    const r = await AI.call("Reply with JSON only.", 'Return {"ok":true}', { maxTokens: 32, task: "interpretScore" });
     el.innerHTML = r?.ok ? `<b style="color:var(--accent)">✓ Working.</b> Live AI is on.`
       : `<b style="color:var(--accent)">✓ Responded.</b>`;
   } catch (e) { el.innerHTML = `<b style="color:var(--bad)">✕</b> ${esc(humanError(e.message))}`; }
