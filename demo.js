@@ -13,11 +13,11 @@
 const DEMO = {
   adjudicate: {
     "Danielle Roux": { verdict:"same", confidence:93,
-      reasoning:"Alon's second note explicitly says she moved to Checkout in August and that she raised the Copenhagen conversation herself, which only makes sense if it is the same person.",
+      reasoning:"Noa's second note explicitly says she moved to Checkout in August and that she raised the Copenhagen conversation herself, which only makes sense if it is the same person.",
       tell:"\"she remembered the copenhagen conversation and brought it up first\"" },
     "David Cohen": { verdict:"different", confidence:91,
       reasoning:"One is on the fraud side at Riskified in London, the other in treasury at Payoneer in New York three days later, and the second rep's note opens by saying it is a different David.",
-      tell:"Alon wrote \"different david\" in the note itself, and the two were logged 5,500km apart within 72 hours." },
+      tell:"Noa wrote \"different david\" in the note itself, and the two were logged 5,500km apart within 72 hours." },
     "Yusuf Al-Rashid": { verdict:"same", confidence:96,
       reasoning:"Identical company, identical job title, and a spelling difference consistent with two reps transliterating the same Arabic name; the second note picks up the exact thread the first one left open.",
       tell:"Feb note says \"talk again when their platform team frees up\"; June note says \"their platform team is free from september\"." },
@@ -56,7 +56,7 @@ const DEMO = {
         body:"You brought up the Copenhagen conversation before I did, which I took as an invitation.\nThe blocker back then was the bank relationship at Trustly. That is not your constraint any more.\nWhat does the FX product roadmap at Checkout look like over the next two quarters? If there is a slot in it, I would like to be in the conversation early rather than late." } },
     "Yusuf Al-Rashid": { arc:"February's \"talk when the platform team frees up\" became June's \"the platform team is free from September and I want a technical session\", he tracked the thread himself.",
       verdict:"worth pushing", why:"He named a date and asked for the technical conversation, but we have no email for him, only a phone number, which is how this one quietly dies.",
-      nudge:"It is September. Call the number Alon took in Istanbul, get an email address on that call, and book the technical session before the end of the month.",
+      nudge:"It is September. Call the number Noa took in Istanbul, get an email address on that call, and book the technical session before the end of the month.",
       avoid:"Do not wait for the next Gulf conference to re-open this. He has already given you the timing.",
       email:{ subject:"Your platform team is free, so let us book the technical session",
         body:"In February you said to come back when the platform team had capacity. In June you told me that would be September.\nIt is September.\nI only have a phone number for you, which is my fault. Can you send me an email address and I will get a technical session in the diary before the end of the month?" } },
