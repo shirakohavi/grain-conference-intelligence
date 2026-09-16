@@ -17,11 +17,14 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 const K = {
-  stage: localStorage.getItem("fm_event") ? "form" : "setup",
+  /* Both the event and the rep have to be known before the tablet can be
+     handed over, so either one missing sends us back to setup. */
+  stage: (localStorage.getItem("fm_event") && localStorage.getItem("rep_id")) ? "form" : "setup",
   eventId: localStorage.getItem("fm_event") || "",
-  rep: localStorage.getItem("fm_rep") || "",
+  repId: localStorage.getItem("rep_id") || "",
+  team: [],
   conferences: [],
-  f: { email: "", name: "", company: "" },
+  f: { email: "", name: "", company: "", title: "" },
   lead: null, encounterId: null, history: [], maybe: [],
   note: { text: "", intent: "warm", segment: "" },
   busy: false, err: "", saved: "",
@@ -61,9 +64,12 @@ async function renderSetup() {
   if (!K.conferences.length) {
     el().innerHTML = `<div class="k-wrap"><div class="k-card">${brand}<p class="lede">Loading events…</p></div></div>`;
     try {
-      const { data, error } = await DB.sb.from("conferences")
-        .select("id,name,city,start_date,end_date").order("start_date");
+      const [{ data, error }, tm] = await Promise.all([
+        DB.sb.from("conferences").select("id,name,city,start_date,end_date").order("start_date"),
+        DB.sb.from("team").select("id,full_name").eq("active", true).order("full_name"),
+      ]);
       if (error) throw error;
+      K.team = (tm.data || []).map(t => ({ id: t.id, name: t.full_name }));
       const today = new Date().toISOString().slice(0, 10);
       K.conferences = data.filter(c => c.end_date >= "2026-01-01");
       const live = K.conferences.find(c => c.start_date <= today && c.end_date >= today);
@@ -83,15 +89,22 @@ async function renderSetup() {
         ${K.conferences.map(c => `<option value="${c.id}"${K.eventId === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}</option>`).join("")}
       </select></div>
     <div class="k-field"><label>Your name</label>
-      <input value="${esc(K.rep)}" placeholder="who is logging" oninput="K.rep=this.value"></div>
+      <select onchange="K.repId=this.value">
+        <option value="">Choose your name</option>
+        ${K.team.map(t => `<option value="${t.id}"${K.repId === t.id ? " selected" : ""}>${esc(t.name)}</option>`).join("")}
+      </select></div>
     <button class="k-go" onclick="start()">Start</button>
   </div></div>`;
 }
 
 function start() {
   if (!K.eventId) { alert("Pick an event."); return; }
+  /* The rep has to pick a name off the roster. Without it the encounter
+     cannot say who spoke to this person, which is the column the contacts
+     view is built around. */
+  if (!K.team.find(t => t.id === K.repId)) { alert("Pick your name."); return; }
   localStorage.setItem("fm_event", K.eventId);
-  localStorage.setItem("fm_rep", K.rep || "Stand");
+  localStorage.setItem("rep_id", K.repId);
   K.stage = "form"; render();
   document.documentElement.requestFullscreen?.().catch(() => {});
 }
@@ -117,6 +130,10 @@ function renderForm() {
 
       <div class="k-field"><label>Company</label>
         <input value="${esc(K.f.company)}" oninput="K.f.company=this.value;refresh()"></div>
+
+      <div class="k-field"><label>Your role</label>
+        <input placeholder="Head of Treasury" value="${esc(K.f.title)}"
+          oninput="K.f.title=this.value;refresh()"></div>
 
       ${K.err ? `<div class="k-note k-bad">${esc(K.err)}</div>` : ""}
 
@@ -144,7 +161,7 @@ async function lookUp() {
     <p class="lede">Checking who we already know…</p></div></div>`;
 
   const email = K.f.email.trim().toLowerCase();
-  const name = K.f.name.trim(), company = K.f.company.trim();
+  const name = K.f.name.trim(), company = K.f.company.trim(), title = K.f.title.trim();
   try {
     if (!K.conferences.length) {
       const { data: cs } = await DB.sb.from("conferences").select("id,name,city");
@@ -173,7 +190,7 @@ async function lookUp() {
       }
       K.maybe = Object.values(pool).map(l => {
         const { score, reasons } = matchConfidence(
-          { name, company, title: "", email },
+          { name, company, title, email },
           { name: l.full_name || "", company: l.company || "", title: l.title || "", email: l.work_email || "" });
         return { lead: l, score, reasons };
       }).filter(x => x.score >= 40).sort((a, b) => b.score - a.score).slice(0, 2);
@@ -185,6 +202,7 @@ async function lookUp() {
         full_name: name || email.split("@")[0],
         work_email: email,
         company: company || null,
+        title: title || null,
       }).select().single();
       if (error) throw error;
       lead = data;
@@ -198,10 +216,11 @@ async function lookUp() {
 
     const { data: created, error: e2 } = await DB.sb.from("encounters").insert({
       lead_id: lead.id, conference_id: K.eventId,
-      rep: localStorage.getItem("fm_rep") || "Stand",
+      rep: (K.team.find(t => t.id === K.repId) || {}).name || "Stand",
       met_at: new Date().toISOString(),
       intent: "warm", self_entered: true,
-      name_as_given: name || null, company_as_given: company || null, email_as_given: email,
+      name_as_given: name || null, company_as_given: company || null,
+      title_as_given: title || null, email_as_given: email,
       note: "", raw_note: "",
     }).select().single();
     if (e2) throw e2;
@@ -326,7 +345,7 @@ async function mergeInto(i) {
 function nextPerson() {
   clearTimeout(noteTimer);
   saveNote();
-  K.f = { email: "", name: "", company: "" };
+  K.f = { email: "", name: "", company: "", title: "" };
   K.note = { text: "", intent: "warm", segment: "" };
   K.lead = null; K.encounterId = null; K.history = []; K.maybe = [];
   K.err = ""; K.saved = ""; K.busy = false;
@@ -347,5 +366,15 @@ function cornerTap() {
 }
 
 document.addEventListener("contextmenu", e => { if (K.stage === "form") e.preventDefault(); });
+
+/* The roster is needed even when setup is skipped, because the encounter
+   written on save has to carry the rep's real name. */
+(async () => {
+  try {
+    const { data } = await DB.sb.from("team").select("id,full_name").eq("active", true).order("full_name");
+    K.team = (data || []).map(t => ({ id: t.id, name: t.full_name }));
+    if (K.stage !== "setup" && !K.team.find(t => t.id === K.repId)) { K.stage = "setup"; render(); }
+  } catch (e) { /* setup will load it again and show the error there */ }
+})();
 
 render();

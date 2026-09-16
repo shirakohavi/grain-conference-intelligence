@@ -26,7 +26,8 @@ const DB = (() => {
     audienceSize: r.audience_size, ticketEur: Number(r.ticket_eur),
     icpDensity: r.icp_density, seniority: r.seniority,
     crossBorder: r.cross_border, strategic: r.strategic,
-    status: r.status, source: r.source, activations: r.activations || [],
+    status: r.status, activations: r.activations || [],
+    covering: r.covering || [],
     attendedBefore: r.attended_before, datesConfirmed: r.dates_confirmed,
     note: r.note,
   });
@@ -51,19 +52,20 @@ const DB = (() => {
 
   async function loadAll() {
     if (!sb) throw new Error(NO_CLIENT);
-    const [c, l, e, g] = await Promise.all([
+    const [c, l, e, t] = await Promise.all([
       sb.from("conferences").select("*").order("start_date"),
       sb.from("leads").select("*"),
       sb.from("encounters").select("*").order("met_at"),
-      sb.from("signals").select("*").order("occurred_at", { ascending: false }),
+      sb.from("team").select("*").order("full_name"),
     ]);
-    for (const r of [c, l, e]) if (r.error) throw new Error(r.error.message);
+    for (const r of [c, l, e, t]) if (r.error) throw new Error(r.error.message);
     const leadById = Object.fromEntries(l.data.map(x => [x.id, x]));
     return {
       conferences: c.data.map(toConf),
       leads: l.data,
       encounters: e.data.map(r => toEnc(r, leadById)),
-      signals: g.error ? [] : g.data,
+      team: t.data.map(r => ({ id: r.id, name: r.full_name,
+        initials: r.initials, region: r.home_region, active: r.active })),
     };
   }
 
@@ -158,22 +160,6 @@ const DB = (() => {
     if (error) throw new Error(error.message);
   }
 
-  /* Anything that can write a row can feed the miner: a Slack connector, a
-     forwarded meeting summary, or a person pasting text. */
-  async function addSignal(fields) {
-    if (!sb) throw new Error(NO_CLIENT);
-    const { data, error } = await sb.from("signals").insert(fields).select().single();
-    if (error) throw new Error(error.message);
-    return data;
-  }
-
-  async function markSignalProcessed(id, found) {
-    if (!sb) throw new Error(NO_CLIENT);
-    const { error } = await sb.from("signals")
-      .update({ processed_at: new Date().toISOString(), found }).eq("id", id);
-    if (error) throw new Error(error.message);
-  }
-
   async function addConference(fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { data, error } = await sb.from("conferences").insert(fields).select().single();
@@ -194,10 +180,9 @@ const DB = (() => {
       .on("postgres_changes", { event: "*", schema: "public", table: "encounters" }, cb)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, cb)
       .on("postgres_changes", { event: "*", schema: "public", table: "conferences" }, cb)
-      .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, cb)
       .subscribe();
   }
 
   return { sb, loadAll, findPossibleDuplicates, searchCandidates, upsertLead, addEncounter,
-           setConferenceStatus, updateConference, addConference, updateLead, addSignal, markSignalProcessed, onChange };
+           setConferenceStatus, updateConference, addConference, updateLead, onChange };
 })();

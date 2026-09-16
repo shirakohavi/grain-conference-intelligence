@@ -1,0 +1,170 @@
+{
+  "name": "grain-hubspot-push",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grain-hubspot-push",
+        "responseMode": "responseNode",
+        "options": { "allowedOrigins": "*" }
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "grain-hubspot-push"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The browser sends the whole contact. Split it into the three HubSpot\n// calls that follow, so each node has exactly what it needs and nothing\n// downstream has to reach back into the raw body.\nconst b = $input.first().json.body || $input.first().json;\nif (!b.properties || !b.properties.email) {\n  throw new Error('No email on the payload. HubSpot needs one to dedupe on.');\n}\nreturn [{ json: {\n  email: b.properties.email,\n  properties: b.properties,\n  notes: b.notes || [],\n  task: b.task || null,\n} }];"
+      },
+      "id": "shape",
+      "name": "Shape the payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.email }}?idProperty=email",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $json.properties }) }}",
+        "options": { "response": { "response": { "neverError": true, "fullResponse": true } } }
+      },
+      "id": "upsert",
+      "name": "Upsert contact by email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 0],
+      "notes": "PATCH-by-email creates or updates in one call, so re-pushing the same person never makes a duplicate."
+    },
+    {
+      "parameters": {
+        "jsCode": "// A 404 from the upsert means the contact does not exist yet, so create\n// it. Any other non-2xx is a real failure and should stop the run.\nconst r = $input.first().json;\nconst src = $('Shape the payload').first().json;\nif (r.statusCode >= 200 && r.statusCode < 300) {\n  return [{ json: { contactId: r.body.id, created: false, ...src } }];\n}\nif (r.statusCode === 404) return [{ json: { contactId: null, created: true, ...src } }];\nthrow new Error(`HubSpot returned ${r.statusCode}: ${JSON.stringify(r.body).slice(0, 300)}`);"
+      },
+      "id": "route",
+      "name": "Exists or create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "version": 2 }, "combinator": "and",
+          "conditions": [{ "operator": { "type": "boolean", "operation": "true" }, "leftValue": "={{ $json.created }}" }] }
+      },
+      "id": "ifcreate",
+      "name": "Needs creating?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $json.properties }) }}",
+        "options": {}
+      },
+      "id": "create",
+      "name": "Create contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One note per encounter, each associated to the contact. Association\n// type 202 is note-to-contact.\nconst src = $('Shape the payload').first().json;\nlet contactId = $json.contactId;\nif (!contactId && $json.id) contactId = $json.id;\nreturn (src.notes || []).map(n => ({ json: {\n  contactId,\n  properties: { hs_timestamp: n.timestamp, hs_note_body: n.body },\n  associations: [{ to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] }],\n} }));"
+      },
+      "id": "fanout",
+      "name": "One item per note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/notes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $json.properties, associations: $json.associations }) }}",
+        "options": {}
+      },
+      "id": "notes",
+      "name": "Write the meeting notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 0]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "version": 2 }, "combinator": "and",
+          "conditions": [{ "operator": { "type": "object", "operation": "notEmpty" }, "leftValue": "={{ $('Shape the payload').first().json.task }}" }] }
+      },
+      "id": "iftask",
+      "name": "Is there a nudge?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1600, 0],
+      "notes": "No trigger, no task. The app only attaches one when a rule says something happened."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/tasks",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { hs_timestamp: new Date(Date.now() + ($('Shape the payload').first().json.task.dueInDays || 2) * 86400000).toISOString(), hs_task_subject: $('Shape the payload').first().json.task.subject, hs_task_body: $('Shape the payload').first().json.task.body, hs_task_status: 'NOT_STARTED', hs_task_priority: 'HIGH', hs_task_type: 'EMAIL' }, associations: [{ to: { id: $('One item per note').first().json.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 204 }] }] }) }}",
+        "options": {}
+      },
+      "id": "task",
+      "name": "Create the follow-up task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, -120],
+      "notes": "A task, not a note. A note sits there; a task turns up in the rep's queue with the draft already written. The draft is never sent from here."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, contactId: $('One item per note').first().json.contactId, notes: ($('Shape the payload').first().json.notes || []).length, task: !!$('Shape the payload').first().json.task }) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Shape the payload", "type": "main", "index": 0 }]] },
+    "Shape the payload": { "main": [[{ "node": "Upsert contact by email", "type": "main", "index": 0 }]] },
+    "Upsert contact by email": { "main": [[{ "node": "Exists or create", "type": "main", "index": 0 }]] },
+    "Exists or create": { "main": [[{ "node": "Needs creating?", "type": "main", "index": 0 }]] },
+    "Needs creating?": { "main": [
+      [{ "node": "Create contact", "type": "main", "index": 0 }],
+      [{ "node": "One item per note", "type": "main", "index": 0 }]] },
+    "Create contact": { "main": [[{ "node": "One item per note", "type": "main", "index": 0 }]] },
+    "One item per note": { "main": [[{ "node": "Write the meeting notes", "type": "main", "index": 0 }]] },
+    "Write the meeting notes": { "main": [[{ "node": "Is there a nudge?", "type": "main", "index": 0 }]] },
+    "Is there a nudge?": { "main": [
+      [{ "node": "Create the follow-up task", "type": "main", "index": 0 }],
+      [{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Create the follow-up task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

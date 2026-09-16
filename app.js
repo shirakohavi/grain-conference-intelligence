@@ -5,7 +5,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 // Loaded from Postgres at boot. Declared here so every view can reach them.
-let CONFERENCES = [], ENCOUNTERS = [], LEADS = [], SIGNALS = [];
+let CONFERENCES = [], ENCOUNTERS = [], LEADS = [], TEAM = [];
 
 const TODAY = "2026-09-14";           // demo clock, so the seeded year reads correctly
 const LS = {
@@ -30,7 +30,6 @@ const S = {
       && Object.keys(DEFAULT_WEIGHTS).every(k => typeof w[k] === "number");
     return ok ? w : { ...DEFAULT_WEIGHTS };
   })(),
-  mined: LS.get("mined", []),                    // conference mentions found in internal text
   aiCache: LS.get("aiCache", {}),
   pushed: new Set(LS.get("pushed", [])),         // contacts actually sent to HubSpot
   queued: new Set(LS.get("queued", [])),         // hot/warm, waiting on a relay URL
@@ -41,7 +40,7 @@ const S = {
 // the team shares lives in the database.
 const save = () => {
   LS.set("matchDecisions", S.decisions); LS.set("weights", S.weights);
-  LS.set("mined", S.mined); LS.set("aiCache", S.aiCache);
+  LS.set("aiCache", S.aiCache);
   // This was being read at startup and never written, so every push was
   // forgotten on reload. A sync state you cannot trust is worse than none.
   LS.set("pushed", [...S.pushed]); LS.set("queued", [...S.queued]);
@@ -55,11 +54,6 @@ const scored = () => CONFERENCES.map(c => ({ c, s: scoreConference(c, S.weights)
 const upcoming = () => CONFERENCES.filter(c => c.start >= TODAY);
 const identities = () => resolveIdentities(allEncounters(), S.decisions);
 
-/* Customer signal: was this event raised by a prospect in Slack / a meeting? */
-const signalFor = name => S.mined.find(m =>
-  normName(m.name).includes(normName(name).slice(0, 12)) ||
-  normName(name).includes(normName(m.name).slice(0, 12)));
-
 /* Three tag colours, not twenty-six. Blue marks payments and fintech, sand
    marks travel, Grain's two core verticals, everything else stays grey. */
 const TAG_TONE = v =>
@@ -69,7 +63,21 @@ const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
 
 /* Who is logging. Set in Settings, and field mode keeps its own copy because
    it runs on a different device. */
-const REP_NAME = () => localStorage.getItem("rep_name") || localStorage.getItem("fm_rep") || "Unassigned";
+/* Who is logged in, as a roster id rather than a typed string. The old free
+   text is still read once so an existing browser does not lose its setting. */
+const REP_ID = () => localStorage.getItem("rep_id") || "";
+const REP_NAME = () => {
+  const t = teamById(REP_ID());
+  return t ? t.name : (localStorage.getItem("rep_name") || "Unassigned");
+};
+/* A dropdown over the roster. Used anywhere a rep has to say who they are,
+   so the name always joins back to a person instead of being spelled three
+   different ways by the same human. */
+const repSelect = (value, onchange, { placeholder = "Choose your name" } = {}) =>
+  `<select class="inp" onchange="${onchange}">
+     <option value=""${!value ? " selected" : ""}>${placeholder}</option>
+     ${TEAM.map(t => `<option value="${t.id}"${value === t.id ? " selected" : ""}>${esc(t.name)}</option>`).join("")}
+   </select>`;
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -148,7 +156,7 @@ function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
    VIEW 1, CONFERENCES.  Decide what's worth attending.
    REDESIGNED: Quiet inline filter bar instead of boxed inputs.
    ══════════════════════════════════════════════════════════════════════ */
-const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", source: "", status: "" };
+const F = { q: "", region: "", tier: "", when: "upcoming", vertical: "", size: "", status: "" };
 
 /* One dropdown builder for the whole filter bar. Every filter is a select, so
    nothing on this page is a row of buttons pretending to be a control. */
@@ -205,7 +213,7 @@ VIEWS_CONF = () => {
   if (F.region) list = list.filter(x => x.c.region === F.region);
   if (F.tier) list = list.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
   if (F.vertical) list = list.filter(x => x.c.verticals.includes(F.vertical));
-  if (F.source) list = list.filter(x => x.c.source === F.source);
+  if (F.size) list = list.filter(x => (sizeBand(x.c.audienceSize) || {}).key === F.size);
   if (F.status) list = list.filter(x => x.c.status === F.status);
   if (F.q) { const q = F.q.toLowerCase();
     list = list.filter(x => (x.c.name + x.c.city + x.c.country + x.c.verticals.join()).toLowerCase().includes(q)); }
@@ -231,7 +239,7 @@ VIEWS_CONF = () => {
     ${FSEL("region", "All regions", regions.map(r => [r, rshort(r)]))}
     ${FSEL("vertical", "All verticals", verts)}
     ${FSEL("status", "All statuses", STATUSES)}
-    ${FSEL("source", "All sources", SOURCES.map(s => [s, SOURCE_LABEL[s] || s]))}
+    ${FSEL("size", "Any size", SIZE_BANDS.map(b => [b.key, b.label]))}
     ${FSEL("tier", "All tiers", [["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["?", "Not scored"]])}
     <div class="filter-stat">${list.length} of ${CONFERENCES.length}</div>
   </div>
@@ -253,29 +261,27 @@ function confTableHTML(list) {
         <thead><tr>
           <th style="min-width:180px">Event</th>
           <th style="width:104px">Vertical</th>
-          <th style="width:112px">Source</th>
+          <th style="width:96px">Size</th>
+          <th style="width:112px">Covered by</th>
           <th style="width:104px">Status</th>
           <th style="width:118px">How we show up</th>
           <th style="width:62px">Fit</th>
           <th style="width:128px">When and where</th>
         </tr></thead>
         <tbody>${list.map(({ c, s }) => {
-          const sig = signalFor(c.name);
           return `<tr class="${s.unscored ? "needs" : ""}" onclick="openConf('${c.id}')">
             <td>
               <div class="cell-name">${esc(c.name)}</div>
-              ${sig || !c.datesConfirmed || c.attendedBefore ? `<div class="row" style="gap:5px;margin-top:3px">
-                ${sig ? `<span class="pill blue">${sig.evidence === "customer" ? "customer signal" : "team signal"}</span>` : ""}
+              ${!c.datesConfirmed || c.attendedBefore ? `<div class="row" style="gap:5px;margin-top:3px">
                 ${!c.datesConfirmed ? `<span class="pill warn">dates estimated</span>` : ""}
                 ${c.attendedBefore ? `<span class="pill outline">attended before</span>` : ""}
               </div>` : ""}
             </td>
             <td><div class="tags">${c.verticals.slice(0, 2).map(tag).join("")}${
                  c.verticals.length > 2 ? `<span class="pill outline">+${c.verticals.length - 2}</span>` : ""}</div></td>
+            <td>${sizePill(c.audienceSize)}</td>
             <td onclick="event.stopPropagation()">
-              <select class="status src-${c.source.replace(/\s/g, "")}" onchange="setSource('${c.id}', this.value)">
-                ${SOURCES.map(o => `<option value="${o}"${c.source === o ? " selected" : ""}>${SOURCE_LABEL[o] || o}</option>`).join("")}
-              </select></td>
+              <button class="peoplebtn" onclick="openCovering('${c.id}', event)">${peopleCell(c.covering)}</button></td>
             <td onclick="event.stopPropagation()">
               <select class="status st-${c.status.replace(/\s/g, "")}" onchange="setStatus('${c.id}', this.value)">
                 ${STATUSES.map(o => `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
@@ -313,7 +319,7 @@ function reweight(k, v) {
     if (F.region) l = l.filter(x => x.c.region === F.region);
     if (F.tier) l = l.filter(x => F.tier === "?" ? x.s.unscored : x.s.tier === F.tier);
     if (F.vertical) l = l.filter(x => x.c.verticals.includes(F.vertical));
-    if (F.source) l = l.filter(x => x.c.source === F.source);
+    if (F.size) l = l.filter(x => (sizeBand(x.c.audienceSize) || {}).key === F.size);
     if (F.status) l = l.filter(x => x.c.status === F.status);
     if (F.q) { const q = F.q.toLowerCase();
       l = l.filter(x => (x.c.name + x.c.city + x.c.country + x.c.verticals.join()).toLowerCase().includes(q)); }
@@ -338,7 +344,6 @@ function drawConf(ai) {
   const c = confById(S.sel); if (!c) return;
   const s = scoreConference(c, S.weights);
   const met = allEncounters().filter(e => e.confId === c.id);
-  const sig = signalFor(c.name);
   const wsum = Object.values(S.weights).reduce((a, b) => a + b, 0) || 1;
 
   const head = `
@@ -358,8 +363,7 @@ function drawConf(ai) {
                  .filter(([k]) => c[k] == null || c[k] === "");
     return drawer(head, `
       <div class="alert warn">
-        <b>Not scored yet.</b> ${esc(c.source === "Manual" ? "Nobody has filled in the estimates."
-          : "Came in from " + (SOURCE_LABEL[c.source] || c.source).toLowerCase() + ", so nobody has assessed it yet.")}
+        <b>Not scored yet.</b> Nobody has filled in the estimates.
       </div>
       ${c.note ? `<div class="tiny muted">${esc(c.note)}</div>` : ""}
       <div>
@@ -388,8 +392,6 @@ function drawConf(ai) {
       <span class="tiny dim">of 100</span>
     </div>
 
-    ${sig ? `<div class="alert good"><b>Raised internally.</b> ${esc(sig.context)}
-      <div class="tiny dim" style="margin-top:3px">${esc(sig.source || "internal signal")}, via ${esc(sig.mentionedBy || "the team")}</div></div>` : ""}
 
     <div>
       <h4>How this score is built</h4>
@@ -534,12 +536,81 @@ async function setStatus(id, status) {
   catch (e) { toast("Couldn't save that status: " + e.message, true); }
 }
 
-async function setSource(id, source) {
+/* ── THE PEOPLE COLUMN ─────────────────────────────────────────────────
+   "Who covers what" is the brief's phrase, and it only means something if
+   the answer is a person rather than a name someone typed. Reps are rows in
+   `team`, so an assignment can be counted, filtered and left empty on
+   purpose. An unassigned A-tier event is a fact the planning view needs. */
+const teamById = id => TEAM.find(t => t.id === id);
+const teamByName = name => TEAM.find(t => t.name === name);
+
+/* A stable colour per person, so the same face is the same colour in every
+   view. Hashing the id beats storing a colour nobody would maintain. */
+const AV_TONES = 6;
+const avTone = id => {
+  let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return h % AV_TONES;
+};
+const avatar = (t, title) => t
+  ? `<span class="av av${avTone(t.id)}" title="${esc(title || t.name)}">${esc(t.initials)}</span>`
+  : "";
+
+/* Up to three faces, then a count. Monday shows the overflow rather than
+   shrinking the faces, because a squashed avatar is unreadable. */
+function peopleCell(ids, { empty = "Nobody yet" } = {}) {
+  // Roster order, always, so the same two people never swap places between
+  // one row and the next just because of the order they were assigned in.
+  const people = TEAM.filter(t => (ids || []).includes(t.id));
+  if (!people.length) return `<span class="dim tiny">${esc(empty)}</span>`;
+  const shown = people.slice(0, 3);
+  return `<span class="avrow">${shown.map(t => avatar(t)).join("")}${
+    people.length > 3 ? `<span class="av more">+${people.length - 3}</span>` : ""}</span>`;
+}
+
+function sizePill(n) {
+  const b = sizeBand(n);
+  if (!b) return `<span class="dim tiny">unknown</span>`;
+  return `<span class="pill size ${b.key}" title="${esc(b.means)}">${b.label}</span>`;
+}
+
+function openCovering(id, ev) {
+  ev.stopPropagation();
+  closeCovering();
   const c = confById(id); if (!c) return;
-  c.source = source;
+  const r = ev.currentTarget.getBoundingClientRect();
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="actscrim" onclick="closeCovering()"></div>
+     <div class="actpop" id="covpop" style="top:${Math.min(r.bottom + 6, innerHeight - 340)}px;left:${r.left}px">
+       <div class="actpop-h">Who is covering ${esc(c.name)}</div>
+       ${TEAM.map(t => `
+         <label class="actopt">
+           <input type="checkbox" ${(c.covering || []).includes(t.id) ? "checked" : ""}
+             onchange="toggleCovering('${id}', '${t.id}', this.checked)">
+           ${avatar(t)}<span>${esc(t.name)}</span>
+           <span class="dim tiny" style="margin-left:auto">${esc(rshort(t.region || ""))}</span>
+         </label>`).join("")}
+       <div class="actpop-f">Leave it empty if nobody is going. That is the gap the planner looks for.</div>
+     </div>`);
+}
+function closeCovering() {
+  document.getElementById("covpop")?.remove();
+  document.querySelector(".actscrim")?.remove();
+}
+
+let _covTimer;
+async function toggleCovering(id, repId, on) {
+  const c = confById(id); if (!c) return;
+  const cur = c.covering || [];
+  c.covering = on ? [...cur, repId] : cur.filter(x => x !== repId);
+  c.covering.sort((a, b) => TEAM.findIndex(t => t.id === a) - TEAM.findIndex(t => t.id === b));
+  const pop = document.getElementById("covpop");
   render();
-  try { await DB.updateConference(id, { source }); }
-  catch (e) { toast("Couldn't save that source: " + e.message, true); }
+  if (pop) document.body.appendChild(pop);           // survive the re-render
+  clearTimeout(_covTimer);
+  _covTimer = setTimeout(async () => {
+    try { await DB.updateConference(id, { covering: c.covering }); }
+    catch (e) { toast("Couldn't save that: " + e.message, true); }
+  }, 500);
 }
 
 async function toggleGoing(id) {
@@ -635,6 +706,7 @@ VIEWS_PLAN = () => {
     else years.push({ year: m.year, left: m.left, width: m.width });
   });
 
+  const cover = coverageByPerson(fut, TEAM, S.weights);
   const clusters = findClusters(fut, {}, S.weights);
   const clusterIds = new Set(clusters.flatMap(cl => cl.items.map(i => i.id)));
   const gaps = findGaps(fut, S.attending, S.weights);
@@ -697,6 +769,7 @@ VIEWS_PLAN = () => {
             <div class="cal-label" title="${esc(c.name)}">
               <span class="tier ${s.unscored ? "Q" : s.tier}">${s.unscored ? "?" : s.tier}</span>
               <span class="cal-name" onclick="openConf('${c.id}')">${esc(c.name)}</span>
+              <span class="cal-ppl">${peopleCell(c.covering, { empty: "" })}</span>
               <select class="status st-${c.status.replace(/\s/g, "")} calstatus" onchange="setStatus('${c.id}', this.value)">
                 ${STATUSES.map(o => `<option${c.status === o ? " selected" : ""}>${o}</option>`).join("")}
               </select>
@@ -720,6 +793,39 @@ VIEWS_PLAN = () => {
       <span><i class="k on"></i> solid, booked</span>
       <span><i class="k clash"></i> red edge, clashes</span>
       <span><i class="k clust"></i> dotted, combinable</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="pad">
+      <div class="spread">
+        <h3 style="margin:0">Who covers what</h3>
+        <span class="tiny dim">${cover.worthCount} events worth attending, ${cover.avg} each on average</span>
+      </div>
+      ${cover.unassigned.length ? `<button class="needbar" style="margin-top:10px"
+        onclick="S.planFilter='worth';render()">
+        <span class="needdot"></span>${cover.unassigned.length} worth attending with nobody assigned:
+        ${cover.unassigned.slice(0, 3).map(x => esc(x.c.name)).join(", ")}${
+          cover.unassigned.length > 3 ? ` and ${cover.unassigned.length - 3} more` : ""}</button>` : ""}
+      <div class="covgrid">
+        ${cover.rows.map(r => `
+          <div class="covrow">
+            <div class="covwho">${avatar(r.rep)}<div>
+              <b>${esc(r.rep.name)}</b>
+              <div class="tiny dim">${esc(rshort(r.rep.region || ""))}</div></div></div>
+            <div class="covev">
+              ${r.events.length
+                ? r.events.slice(0, 4).map(x =>
+                    `<button class="pill conftag" title="${esc(x.c.name)}" onclick="openConf('${x.c.id}')">${esc(x.c.name)}</button>`).join("")
+                  + (r.events.length > 4 ? `<span class="pill outline">+${r.events.length - 4}</span>` : "")
+                : `<span class="dim tiny">Nothing booked</span>`}
+            </div>
+            <div class="covflag">
+              ${r.overloaded ? `<span class="pill warn" title="More than half again the team average">carrying ${r.count}</span>` : ""}
+              ${r.quiet ? `<span class="pill outline" title="Longest stretch from today with nothing booked">${r.quietDays}d clear</span>` : ""}
+            </div>
+          </div>`).join("")}
+      </div>
     </div>
   </div>
 
@@ -799,7 +905,7 @@ VIEWS_PLAN = () => {
      - a directory you can search and filter
      - the HubSpot handoff state
    Sortable columns, dropdown filters, click a row for the full history. */
-const CF = { q: "", conf: "", segment: "", signal: "", lead: "", hubspot: "" };
+const CF = { q: "", conf: "", segment: "", signal: "", lead: "", hubspot: "", nudge: "" };
 const CSORT = { key: "priority", dir: -1 };
 
 
@@ -833,6 +939,9 @@ function contactRows() {
       signal: c.encounters[c.encounters.length - 1].intent,
       confs: [...new Set(c.encounters.map(e => ({ id: e.confId, name: e.confName })).map(x => JSON.stringify(x)))]
         .map(x => JSON.parse(x)),
+      /* Who spoke to them. Derived, never typed: it is a fact the encounters
+         already hold, so it cannot drift out of step with the history. */
+      repIds: [...new Set(c.encounters.map(e => (teamByName(e.rep) || {}).id).filter(Boolean))],
       leadId: c.encounters[c.encounters.length - 1].leadId,
       leadStatus: c.encounters[c.encounters.length - 1].leadStatus || "New",
       push: pushState(c),
@@ -849,6 +958,7 @@ VIEWS_CONTACTS = () => {
   if (CF.conf) rows = rows.filter(r => r.confs.includes(CF.conf));
   if (CF.segment) rows = rows.filter(r => r.segment === CF.segment);
   if (CF.signal) rows = rows.filter(r => r.signal === CF.signal);
+  if (CF.nudge) rows = rows.filter(r => r.needsNudge);
   if (CF.lead) rows = rows.filter(r => r.leadStatus === CF.lead);
   /* The table shows two states now, pushed or needs a push, so the filter
      offers the same two. "pushed" covers every row that goes on its own. */
@@ -862,6 +972,7 @@ VIEWS_CONTACTS = () => {
     : k === "touches" ? r.met
     : k === "last" ? (r.last ? r.last.at : "")
     : k === "signal" ? ({ hot: 3, warm: 2, cold: 1 }[r.signal] || 0)
+    : k === "priority" ? r.priority
     : r.priority;
   rows.sort((a, b) => { const x = val(a, CSORT.key), y = val(b, CSORT.key);
     return (x < y ? -1 : x > y ? 1 : 0) * CSORT.dir; });
@@ -900,6 +1011,10 @@ VIEWS_CONTACTS = () => {
       <option value="">All lead statuses</option>
       ${LEAD_STATUS.map(c => `<option${CF.lead === c ? " selected" : ""}>${c}</option>`).join("")}
     </select>
+    <select class="filter-control" onchange="CF.nudge=this.value;render()">
+      <option value="">Everyone</option>
+      <option value="1"${CF.nudge ? " selected" : ""}>Needs a nudge (${rows.filter(r => r.needsNudge).length})</option>
+    </select>
     <select class="filter-control" onchange="CF.hubspot=this.value;render()">
       <option value="">All HubSpot states</option>
       <option value="pushed"${CF.hubspot === "pushed" ? " selected" : ""}>Pushed</option>
@@ -914,8 +1029,9 @@ VIEWS_CONTACTS = () => {
       ${TH("name", "Name", "152px")}
       <th style="width:108px">Lead status</th>
       ${TH("company", "Company", "100px")}
-      <th style="width:98px">Segment</th>
-      <th style="width:128px">Work email</th>
+      ${TH("priority", "Relationship", "132px")}
+      <th style="width:120px">Work email</th>
+      <th style="width:92px">Spoke to them</th>
       ${TH("touches", "Met", "42px")}
       <th style="width:140px">Where</th>
       ${TH("last", "Last seen", "114px")}
@@ -925,7 +1041,8 @@ VIEWS_CONTACTS = () => {
     <tbody>${rows.map(r => `
       <tr onclick="openContact('${r.id}')">
         <td>
-          <div class="cell-name">${esc(r.name)}</div>
+          <div class="cell-name">${esc(r.name)}${r.needsNudge
+            ? `<span class="nudgedot" title="${esc(r.nudgeReason)}"></span>` : ""}</div>
           <div class="tiny dim">${esc(r.title || "")}</div>
         </td>
         <td onclick="event.stopPropagation()">
@@ -935,8 +1052,12 @@ VIEWS_CONTACTS = () => {
         </td>
         <td class="tiny">${esc(r.company || "")}
           ${r.changedCompany ? `<div class="pill warn">changed employer</div>` : ""}</td>
-        <td>${r.segment ? `<span class="pill ${TAG_TONE(r.segment)}">${esc(r.segment)}</span>` : `<span class="dim tiny">-</span>`}</td>
+        <td><div class="relcell">
+          <span class="verdict v-${r.verdict.replace(/\s/g, "")}" title="${esc(r.test)}">${esc(r.verdict)}</span>
+          <b class="mono prio" title="Call order out of 100: ${esc(priorityBand(r.priority).label)}">${r.priority}</b>
+        </div></td>
         <td class="email">${r.email ? esc(r.email) : "no email on file"}</td>
+        <td>${peopleCell(r.repIds, { empty: "-" })}</td>
         <td><b class="mono">${r.met}</b></td>
         <td onclick="event.stopPropagation()"><div class="tags">
           ${r.confs.slice(0, 2).map(c => `<button class="pill conftag" title="${esc(c.name)}" onclick="openConfFrom('${c.id}')">${esc(c.name)}</button>`).join("")}
@@ -991,7 +1112,84 @@ async function adjudicate(key) {
     ${res.verdict !== "unsure" ? `<button class="btn sm" style="margin-top:9px" onclick="decide('${key}','${res.verdict}')">Accept and apply</button>` : ""}
   </div>`;
 }
-function decide(key, v) { S.decisions[key] = v; save(); render(); }
+function decide(key, v) {
+  /* Read the pair BEFORE recording the decision. Once it is decided it
+     leaves the review queue, and the reconcile screen needs both sides. */
+  const pair = identities().review.find(x => x.key === key);
+  S.decisions[key] = v; save();
+  /* Merging two records leaves two versions of the truth: Head of Payments
+     at Nuvei in May, VP Payments at Nuvei in October. Taking the most recent
+     silently is what loses a job change nobody noticed, so after a merge the
+     tool asks which version is right and lets it be typed over. */
+  if (v === "same" && pair) { render(); openReconcile(pair); return; }
+  render();
+}
+
+/* Everything we hold on this person, both versions side by side, editable.
+   The lead row is the record that survives the merge, so that is what saves. */
+function openReconcile(r) {
+  if (!r) return;
+  const key = r.key;
+  const target = r.b.at >= r.a.at ? r.b : r.a;        // the more recent record
+  const other  = target === r.b ? r.a : r.b;
+  S.rec = {
+    key, leadId: target.leadId, otherLeadId: other.leadId,
+    name: target.name || other.name || "",
+    email: target.email || other.email || "",
+    title: target.title || other.title || "",
+    company: target.company || other.company || "",
+    a: other, b: target,
+  };
+  drawReconcile();
+}
+
+function drawReconcile() {
+  const d = S.rec; if (!d) return;
+  const alt = (label, field) => {
+    const av = d.a[field] || "", bv = d.b[field] || "";
+    const opts = [...new Set([bv, av].filter(Boolean))];
+    return `<label>${label}</label>
+      <input class="inp" value="${esc(d[field])}" oninput="S.rec.${field}=this.value">
+      ${opts.length > 1 ? `<div class="chips" style="margin:4px 0 2px">
+        ${opts.map(o => `<button class="chip ${d[field] === o ? "on" : ""}"
+          onclick="S.rec.${field}=${JSON.stringify(o).replace(/"/g, "&quot;")};drawReconcile()">${esc(o)}</button>`).join("")}
+      </div><div class="tiny dim">Two versions on record. The newer one is ${esc(bv || "blank")}.</div>` : ""}`;
+  };
+  drawer(`<div class="spread"><div>
+      <h3 style="margin:0">Merged into one person</h3>
+      <div class="tiny dim" style="margin-top:3px">Check what we hold on them before it goes to HubSpot.</div>
+    </div><button class="x" onclick="closeReconcile()">×</button></div>`, `
+    <div class="tiny muted">
+      ${esc(d.a.confName)} on ${fmtDMY(d.a.at)} and ${esc(d.b.confName)} on ${fmtDMY(d.b.at)}
+      are now the same record. Both meetings are kept either way, this is only
+      about the details we carry forward.
+    </div>
+    <div class="form">
+      ${alt("Full name", "name")}
+      ${alt("Work email", "email")}
+      ${alt("Role", "title")}
+      ${alt("Company", "company")}
+    </div>
+    <div class="row">
+      <button class="btn" onclick="saveReconcile()">Save</button>
+      <button class="btn ghost" onclick="closeReconcile()">Leave it as it is</button>
+    </div>`);
+}
+
+function closeReconcile() { S.rec = null; S.reconcile = null; closeDrawer(); render(); }
+
+async function saveReconcile() {
+  const d = S.rec; if (!d) return;
+  try {
+    await DB.updateLead(d.leadId, {
+      full_name: d.name.trim() || null, work_email: d.email.trim() || null,
+      title: d.title.trim() || null, company: d.company.trim() || null,
+    });
+    S.rec = null; S.reconcile = null; closeDrawer();
+    await reload();
+    toast(`${d.name} updated.`);
+  } catch (e) { toast("Couldn't save: " + e.message, true); }
+}
 
 function openContact(id) {
   const { contacts } = identities();
@@ -1085,6 +1283,64 @@ function identityBlock(c) {
   }).join("");
 }
 
+/* ── THE ARC ───────────────────────────────────────────────────────────
+   The verdict above is a rule and is always on screen. This is the part a
+   rule cannot do, so it is the part that costs a model call, and it is only
+   offered when engine.js says something actually happened. A Warming contact
+   inside their normal rhythm gets the facts and silence, which is most of
+   the list and is the whole answer to "too aggressive is noise". */
+function arcBlock(c) {
+  if (!c.needsNudge) return "";
+  const got = S.aiCache[`arc:${c.id}`];
+  return `<div class="card pad arccard">
+    <div class="spread">
+      <div><h4 style="margin:0">What to do about it</h4>
+        <div class="tiny dim" style="margin-top:2px">${esc(c.nudgeReason)}</div></div>
+      ${got ? "" : `<button class="btn sm" onclick="askArc('${c.id}')" id="arcbtn">${
+        S.busy["arc" + c.id] ? "Reading the notes…" : "Read the notes"}</button>`}
+    </div>
+    <div id="arcout">${got ? arcHTML(got) : ""}</div>
+  </div>`;
+}
+
+function arcHTML(a) {
+  if (!a) return "";
+  const em = a.email || {};
+  return `
+    <div class="arcline"><span>Arc</span><p>${esc(a.arc || "")}</p></div>
+    <div class="arcline"><span>Read</span><p>${esc(a.why || "")}</p></div>
+    <div class="arcline"><span>Do</span><p><b>${esc(a.nudge || "")}</b></p></div>
+    ${a.avoid ? `<div class="arcline"><span>Avoid</span><p>${esc(a.avoid)}</p></div>` : ""}
+    ${em.body ? `<div class="draft">
+      <div class="spread">
+        <div class="tiny dim">Draft, not sent. HubSpot owns sending.</div>
+        <button class="btn ghost sm" onclick="copyDraft(this)">Copy</button>
+      </div>
+      <div class="draftsub">${esc(em.subject || "")}</div>
+      <pre class="draftbody">${esc(em.body)}</pre>
+    </div>` : ""}`;
+}
+
+function copyDraft(btn) {
+  const box = btn.closest(".draft");
+  const text = box.querySelector(".draftsub").textContent + "\n\n" + box.querySelector(".draftbody").textContent;
+  navigator.clipboard?.writeText(text).then(() => {
+    btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1400);
+  }, () => toast("Couldn't copy, select it by hand.", true));
+}
+
+async function askArc(id) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.id === id); if (!c) return;
+  S.busy["arc" + id] = true;
+  const btn = document.getElementById("arcbtn");
+  if (btn) { btn.textContent = "Reading the notes…"; btn.disabled = true; }
+  const a = await ask(`arc:${id}`, () => AI.relationshipArc(c), () => DEMO.arc(c));
+  S.busy["arc" + id] = false;
+  const out = document.getElementById("arcout");
+  if (out) { out.innerHTML = arcHTML(a); btn?.remove(); }
+}
+
 function drawContact(c) {
   const st = (c.encounters[c.encounters.length - 1].leadStatus) || "New";
   const leadId = c.encounters[c.encounters.length - 1].leadId;
@@ -1102,9 +1358,16 @@ function drawContact(c) {
         <span class="pill">${met} meeting${met === 1 ? "" : "s"}</span>
       </div>
     </div><button class="x" onclick="closeDrawer()">×</button></div>`, `
+    <div class="verdictbar">
+      <span class="verdict v-${c.verdict.replace(/\s/g, "")}">${esc(c.verdict)}</span>
+      <span class="tiny dim">${esc(c.test)}</span>
+    </div>
+
     <div class="summary">${esc(contactSummary(c))}</div>
 
     ${identityBlock(c)}
+
+    ${arcBlock(c)}
 
     <div><h4>Every meeting</h4>
       ${c.encounters.map(e => `
@@ -1173,18 +1436,41 @@ const PUSH_LABEL = {
 const pushBadge = c => PUSH_LABEL[pushState(c)];
 
 function buildPayload(c) {
+  const arc = S.aiCache[`arc:${c.id}`] || null;
+  const last = c.encounters[c.encounters.length - 1];
   return {
     properties: {
       firstname: c.name.split(" ")[0], lastname: c.name.split(" ").slice(1).join(" "),
       email: c.email, company: c.company, jobtitle: c.title,
       grain_conference_touches: c.touches,
-      grain_relationship_pattern: c.pattern,
+      grain_relationship_pattern: c.verdict,
       grain_first_met_at: c.encounters[0].confName,
-      grain_last_met_at: c.encounters[c.encounters.length - 1].confName,
+      grain_last_met_at: last.confName,
       grain_priority: c.priority,
       hs_lead_status: lastIntent(c) === "hot" ? "OPEN_DEAL" : "IN_PROGRESS",
     },
+    /* Every meeting note, as a timeline note. This is the point of the whole
+       push: the notes are what make a repeat contact worth anything, and
+       they are useless if they only exist in here. */
     notes: c.encounters.map(e => ({ timestamp: e.at, body: `[${e.confName}] ${e.note}, logged by ${e.rep}` })),
+    /* A task, not a note, and only when a rule says something happened.
+       A note sits there; a task turns up in the rep's HubSpot queue with the
+       draft already written. Nothing is ever sent from here: HubSpot owns
+       sending, and the one action that touches a customer keeps a human on
+       it. No trigger, no task, no noise. */
+    task: (c.needsNudge && arc && arc.email) ? {
+      subject: `Follow up: ${c.name}`,
+      dueInDays: 2,
+      body: [
+        `Why now: ${c.nudgeReason}.`,
+        arc.nudge ? `Next step: ${arc.nudge}` : "",
+        "",
+        "Draft, not sent:",
+        `Subject: ${arc.email.subject || ""}`,
+        "",
+        arc.email.body || "",
+      ].filter(x => x !== null).join("\n"),
+    } : null,
   };
 }
 
@@ -1265,8 +1551,7 @@ VIEWS_SETTINGS = () => {
           value="${esc(localStorage.getItem("n8n_base") || "")}"
           oninput="localStorage.setItem('n8n_base',this.value.replace(/\\/+$/,''))">
         <label>Your name</label>
-        <input class="inp" placeholder="who is logging leads" value="${esc(localStorage.getItem("rep_name") || "")}"
-          oninput="localStorage.setItem('rep_name',this.value)">
+        ${repSelect(REP_ID(), "localStorage.setItem('rep_id',this.value);render()", { placeholder: "Who is logging leads" })}
       </div>
       <div class="row" style="margin-top:11px">
         <button class="btn" onclick="testProxy()">Test the webhook</button>
@@ -1364,7 +1649,7 @@ async function testKey() {
 function exportAll() {
   const { contacts } = identities();
   const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), weights: S.weights,
-    attending: [...S.attending], contacts, mined: S.mined }, null, 2)], { type: "application/json" });
+    attending: [...S.attending], contacts }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "grain-conference-intelligence.json"; a.click();
 }
@@ -1399,11 +1684,8 @@ const VIEWS = { conferences: VIEWS_CONF, plan: VIEWS_PLAN,
    ══════════════════════════════════════════════════════════════════════ */
 async function reload() {
   const d = await DB.loadAll();
-  CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads; SIGNALS = d.signals || [];
-  // The miner runs in n8n with no screen of its own. What it found still has
-  // to surface somewhere, so it lands on the conference row as a signal pill.
-  S.mined = SIGNALS.flatMap(g => (g.found || []).map(f => ({ ...f,
-    source: g.source, channel: g.channel })));
+  CONFERENCES = d.conferences; ENCOUNTERS = d.encounters; LEADS = d.leads;
+  TEAM = d.team || [];
   S.attending = new Set(CONFERENCES.filter(c => c.status === "Going").map(c => c.id));
   render();
   sweepAutoPush();
@@ -1484,14 +1766,6 @@ const ACTIVATIONS = [
   "Workshop",
   "Sponsor",
 ];
-/* Where an event came from. Kept visible on every row because provenance
-   changes how much you trust it: a conference two customers raised in Slack
-   is a different proposition from one a model suggested. */
-const SOURCES = ["Manual", "Slack", "Meeting notes", "AI search", "LinkedIn"];
-const SOURCE_LABEL = {
-  "Manual": "Manual entry", "Slack": "Slack", "Meeting notes": "Meeting notes",
-  "AI search": "AI discovery", "LinkedIn": "LinkedIn",
-};
 const STATUSES = ["New", "Going", "Considering", "Not going"];
 S.newConf = null;
 
@@ -1499,7 +1773,7 @@ function openAddConference() {
   S.newConf = { name: "", start: "", end: "", city: "", country: "", region: "Europe",
     verticals: [], activations: [], audienceSize: 1000, ticketEur: 500,
     icpDensity: 50, seniority: 50, strategic: 50,
-    status: "New", source: "Manual", datesConfirmed: true, note: "" };
+    status: "New", covering: [], datesConfirmed: true, note: "" };
   drawAddConf();
 }
 
@@ -1545,10 +1819,13 @@ function drawAddConf() {
             ? S.newConf.activations.filter(x=>x!=='${a}')
             : [...S.newConf.activations, '${a}']; drawAddConf()">${a}</button>`).join("")}
       </div>
-      <label>Source</label>
-      <select class="inp" onchange="S.newConf.source=this.value;drawAddConf()">
-        ${SOURCES.map(o => `<option${d.source === o ? " selected" : ""} value="${o}">${SOURCE_LABEL[o]}</option>`).join("")}
-      </select>
+      <label>Who is covering it</label>
+      <div class="chips" style="margin:0">
+        ${TEAM.map(t => `<button class="chip ${d.covering.includes(t.id) ? "on" : ""}"
+          onclick="S.newConf.covering = S.newConf.covering.includes('${t.id}')
+            ? S.newConf.covering.filter(x=>x!=='${t.id}')
+            : [...S.newConf.covering, '${t.id}']; drawAddConf()">${esc(t.name)}</button>`).join("")}
+      </div>
       <label>Are we going?</label>
       <select class="inp" onchange="S.newConf.status=this.value;drawAddConf()">
         ${STATUSES.map(o => `<option${d.status === o ? " selected" : ""}>${o}</option>`).join("")}
@@ -1616,7 +1893,7 @@ async function saveConference() {
       audience_size: d.audienceSize, ticket_eur: d.ticketEur,
       icp_density: d.icpDensity, seniority: d.seniority,
       strategic: d.strategic,
-      status: d.status, source: d.source || "Manual", activations: d.activations || [],
+      status: d.status, covering: d.covering || [], activations: d.activations || [],
       dates_confirmed: d.datesConfirmed, note: d.note,
     });
     S.newConf = null; closeDrawer(); await reload();
@@ -1646,7 +1923,7 @@ function openAddPerson(confId) {
     leadId: null, known: null,
     fields: { name: "", company: "", title: "", phone: "", segment: "PSP" },
     confId: confId || (upcoming()[0] && upcoming()[0].id), intent: "warm", note: "",
-    rep: REP_NAME() === "Unassigned" ? "" : REP_NAME() };
+    repId: REP_ID() };
   drawAddPerson();
 }
 
@@ -1752,8 +2029,7 @@ function drawAddPerson() {
         <textarea class="inp" style="min-height:84px" placeholder="What did they actually say?"
           oninput="S.ap.note=this.value">${esc(a.note)}</textarea>
         <label>Logged by</label>
-        <input class="inp" placeholder="your name" value="${esc(a.rep)}"
-          oninput="S.ap.rep=this.value;localStorage.setItem('rep_name',this.value)">
+        ${repSelect(a.repId, "S.ap.repId=this.value;localStorage.setItem('rep_id',this.value);drawAddPerson()")}
       </div>
       <div class="tiny dim">${INTENT_HELP}</div>
       <button class="btn" onclick="savePerson()">Save encounter</button>`;
@@ -1789,6 +2065,10 @@ function sameAs(leadId) {
 async function savePerson() {
   const a = S.ap;
   const conf = confById(a.confId);
+  /* An encounter with no rep on it cannot answer "who spoke to them", which
+     is half of what the contacts view is for. So it is required, not
+     defaulted to whoever happens to be logged in on this browser. */
+  if (!teamById(a.repId)) return toast("Pick who logged this first.", true);
   try {
     let leadId = a.leadId;
     if (!leadId) {
@@ -1803,7 +2083,8 @@ async function savePerson() {
       leadId = lead.id;
     }
     await DB.addEncounter({
-      lead_id: leadId, conference_id: conf.id, rep: a.rep.trim() || REP_NAME(),
+      lead_id: leadId, conference_id: conf.id,
+      rep: (teamById(a.repId) || {}).name || REP_NAME(),
       met_at: new Date().toISOString(), intent: a.intent,
       note: a.note, raw_note: a.note,
       name_as_given: a.known ? a.known.full_name : a.fields.name,

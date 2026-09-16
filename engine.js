@@ -25,6 +25,19 @@ const MEETINGS_PER_DAY = 20;
    and EMEA cannot have one flight price: Dubai is 900 from Tel Aviv, Europe
    1200, Africa 1800. Merging them would also suggest London and Dubai as one
    trip, which nobody flying out of Tel Aviv would book. */
+/* Conference size, in bands a rep can act on rather than raw numbers.
+   The cuts are not round for their own sake: each one changes what the rep
+   has to do to work the room, which is why they are worth filtering on. */
+const SIZE_BANDS = [
+  { key: "xs", label: "Under 1,000", max: 1000,   means: "You can meet everyone worth meeting" },
+  { key: "s",  label: "1k-3k",       max: 3000,   means: "One rep can work the whole floor" },
+  { key: "m",  label: "3k-10k",      max: 10000,  means: "Needs a plan before you land" },
+  { key: "l",  label: "10k-25k",     max: 25000,  means: "Needs a booth" },
+  { key: "xl", label: "25k+",        max: Infinity, means: "Needs a team" },
+];
+const sizeBand = n => (n == null || n === "") ? null
+  : SIZE_BANDS.find(b => n < b.max) || SIZE_BANDS[SIZE_BANDS.length - 1];
+
 const REGION_SHORT = {
   "Europe": "EUR", "Middle East": "ME", "Africa": "AFR",
   "Asia-Pacific": "APAC", "North America": "NA", "South America": "LATAM",
@@ -215,6 +228,53 @@ function findClusters(confs, { maxGap = 10, maxSpan = 18, minTier = 45 } = {}, w
    stops meeting people, so a three-month hole in spring is a revenue hole
    in summer. It is only reported when there was something bookable in
    those months, otherwise it is not a gap, it is just a quiet season.   */
+/* ── WHO COVERS WHAT ───────────────────────────────────────────────────────
+   "Plan team coverage across the year" is only half answered by a calendar
+   of events. The other half is a calendar of people. Three facts a sales
+   lead actually needs, and all three are counting, not judgement:
+     · which events worth attending have nobody on them
+     · who is carrying more than their share
+     · who has a long stretch with nothing booked
+   `minTier` is the same 65 the gap finder uses, so "worth attending" means
+   one thing across the whole app.                                        */
+function coverageByPerson(confs, team, weights, { minTier = 65, quietDays = 120 } = {}) {
+  const worth = confs
+    .map(c => ({ c, s: scoreConference(c, weights) }))
+    .filter(({ c, s }) => c.status === "Going" || (!s.unscored && s.total >= minTier))
+    .sort((a, b) => a.c.start.localeCompare(b.c.start));
+
+  const unassigned = worth.filter(({ c }) => !(c.covering || []).length);
+
+  const rows = team.map(t => {
+    const mine = worth.filter(({ c }) => (c.covering || []).includes(t.id));
+    // The longest run with nothing booked, measured from today so a rep with
+    // everything in December still reads as quiet now.
+    // Only forward. A gap that already happened is history, not a plan.
+    const marks = [Date.now(), ...mine.map(({ c }) => new Date(c.start).getTime())
+      .filter(t => t >= Date.now())].sort((a, b) => a - b);
+    let widest = 0, at = null;
+    for (let i = 1; i < marks.length; i++) {
+      const g = Math.round((marks[i] - marks[i - 1]) / 86400000);
+      if (g > widest) { widest = g; at = marks[i - 1]; }
+    }
+    if (mine.length === 0) widest = quietDays + 1;
+    return { rep: t, events: mine, count: mine.length,
+             quietDays: widest, quiet: widest > quietDays,
+             quietFrom: at ? new Date(at).toISOString().slice(0, 10) : null };
+  });
+
+  const counts = rows.map(r => r.count);
+  const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
+  /* Overloaded is relative to the team, not an invented ceiling: half again
+     the average AND at least three events, so a four-person team with one
+     event each never lights up. A rep with a long clear stretch is not
+     overloaded whatever the count says, so the two flags never contradict
+     each other on the same row. */
+  rows.forEach(r => { r.overloaded = r.count >= 3 && r.count > avg * 1.5 && !r.quiet; });
+
+  return { rows, unassigned, worthCount: worth.length, avg: +avg.toFixed(1) };
+}
+
 function findGaps(confs, attending, weights, { minTier = 65, minEvents = 2, minMonths = 2 } = {}) {
   const scored = confs.map(c => ({ c, s: scoreConference(c, weights) }));
   const worthy = scored.filter(x => x.s.total >= minTier);
@@ -455,29 +515,140 @@ function arcSignals(list) {
   const spanDays = Math.round((last - first) / 86400000);
   const delta = ranks[n - 1] - ranks[0];
   const advancedEver = ranks.some((r, i) => i > 0 && r > ranks[i - 1]);
+  const everHot = ranks.some(r => r === 3);
   const daysSince = Math.round((Date.now() - last) / 86400000);
   const changedCompany = new Set(list.map(e => normCompany(e.company))).size > 1;
   const repsInvolved = [...new Set(list.map(e => e.rep))];
 
-  let pattern, tone;
-  if (n === 1) { pattern = "New"; tone = "neutral"; }
-  else if (delta > 0) { pattern = "Warming"; tone = "good"; }
-  else if (delta < 0) { pattern = "Cooling"; tone = "bad"; }
-  else if (!advancedEver && n >= 3) { pattern = "Stalled"; tone = "bad"; }
-  else { pattern = "Flat"; tone = "neutral"; }
+  /* Their own rhythm, not a fixed 90 days. A contact seen at every event is
+     late after two months; a contact seen once a year is not. The gap that
+     matters is the average gap THEY have kept, doubled. */
+  const usualGapDays = n > 1 ? Math.round(spanDays / (n - 1)) : null;
+  const overdue = usualGapDays != null && daysSince > usualGapDays * 2;
+
+  /* Five verdicts, each one rule, each checkable by hand. The rule layer
+     decides WHICH of these it is. The model never does, which is what keeps
+     the answer reproducible. Order matters: the first rule that fires wins. */
+  let verdict, tone, test;
+  if (n === 1) {
+    verdict = "New"; tone = "neutral";
+    test = "Met once.";
+  } else if (overdue && everHot) {
+    verdict = "Gone quiet"; tone = "bad";
+    test = `Was hot at some point, and silent for ${daysSince} days against a usual gap of ${usualGapDays}.`;
+  } else if (overdue) {
+    verdict = "Gone quiet"; tone = "bad";
+    test = `Silent for ${daysSince} days against a usual gap of ${usualGapDays}.`;
+  } else if (n >= 3 && !everHot) {
+    verdict = "Stuck"; tone = "bad";
+    test = `Met ${n} times and never once named a budget or a date.`;
+  } else if (everHot && ranks[n - 1] < 3) {
+    verdict = "Cooling"; tone = "bad";
+    test = "Was hot at some point, is not now.";
+  } else if (delta > 0) {
+    verdict = "Warming"; tone = "good";
+    test = `Went ${list[0].intent} to ${list[n - 1].intent} and is still inside their usual gap.`;
+  } else if (ranks[n - 1] === 3) {
+    verdict = "Warming"; tone = "good";
+    test = "Hot at the most recent meeting.";
+  } else {
+    verdict = "Flat"; tone = "neutral";
+    test = `${n} meetings, no movement either way.`;
+  }
+
+  /* When to interrupt the rep. The brief's warning is that a nudge which is
+     always there is noise and one that is never there is invisible, so the
+     answer is neither: a nudge appears only when something happened. Warming
+     and Flat contacts get the facts and silence, which is most of the list. */
+  let nudgeReason = "";
+  if (changedCompany) nudgeReason = "Changed employer since you met";
+  else if (verdict === "Gone quiet") nudgeReason = `Overdue by their own rhythm, ${daysSince} days against ${usualGapDays}`;
+  else if (verdict === "Stuck") nudgeReason = `${n} meetings, never once hot`;
+  else if (verdict === "Cooling") nudgeReason = "Was hot, is not now";
 
   return {
-    pattern, tone, spanDays, daysSince, changedCompany, repsInvolved,
+    verdict, tone, test, spanDays, daysSince, changedCompany, repsInvolved,
+    usualGapDays, overdue, everHot,
+    needsNudge: !!nudgeReason, nudgeReason,
+    // Kept under its old name so nothing downstream had to change at once.
+    pattern: verdict,
     touches: n,
     velocity: n > 1 ? +(delta / (spanDays / 30 || 1)).toFixed(2) : 0,
-    // The single number a rep should sort by: multiple touches only matter
-    // if the temperature is actually moving.
-    priority: Math.round(
-      (INTENT_RANK[list[n - 1].intent] || 1) * 22 +
-      Math.min(n, 4) * 10 +
-      (delta > 0 ? 25 : delta < 0 ? -15 : (n >= 3 ? -18 : 0)) +
-      (changedCompany ? 8 : 0) +
-      (repsInvolved.length > 1 ? 5 : 0)
-    ),
+    priority: priorityScore({ ranks, n, everHot, delta, list, overdue }),
   };
 }
+
+/* ── PRIORITY: WHO DO I CALL FIRST ─────────────────────────────────────────
+   Deliberately a different question from the verdict above, and kept a
+   different number because of it.
+
+     verdict  = what is this relationship DOING            (motion)
+     priority = is this person worth the effort right now  (worth)
+
+   Squashing those together is the trap: seniority and ICP fit are facts
+   about the PERSON, so a perfect-fit senior buyer who has attended four
+   events and never named a budget would score high on a combined number and
+   hide behind it. Here they lift the call order and leave the verdict alone,
+   so that person reads "Stuck, priority 71": worth calling, not warming.
+
+   Five components, 100 points, all arithmetic:
+     signal now      30   what they are today
+     trajectory      25   whether it is moving, not how often we have met
+     ICP fit         20   is their company the kind Grain sells to
+     seniority       15   can they sign
+     recency         10   against their own rhythm, not a fixed 90 days     */
+
+/* Titles are free text written by a rep on a show floor, so this matches on
+   the words that actually appear rather than pretending there is a taxonomy. */
+const SENIORITY_BANDS = [
+  [/\b(founder|co-?founder|ceo|cfo|coo|cto|chief|owner|president|partner)\b/i, 15],
+  [/\b(vp|vice.president|svp|evp)\b/i, 13],
+  [/\b(head of|director|gm|general manager)\b/i, 11],
+  [/\b(lead|principal|senior manager)\b/i, 8],
+  [/\b(manager|pm|product manager)\b/i, 6],
+];
+const seniorityPoints = title => {
+  const t = String(title || "");
+  for (const [re, pts] of SENIORITY_BANDS) if (re.test(t)) return pts;
+  return t ? 4 : 2;                       // a title we cannot read still beats none
+};
+
+/* Grain's own words for who they sell to, from their LinkedIn. Treasury and
+   PSP sit top because both are the person who actually carries the FX risk. */
+const SEGMENT_POINTS = {
+  "PSP": 20, "Treasury": 20, "Marketplace": 18, "Travel": 18,
+  "BNPL": 16, "Payroll": 14, "Stablecoin": 12, "Other": 6,
+};
+
+function priorityScore({ ranks, n, everHot, delta, list, overdue }) {
+  const now = ranks[n - 1];
+  const signal = now === 3 ? 30 : now === 2 ? 18 : 6;
+
+  /* Trajectory, not meeting count. Counting meetings rewards the person who
+     keeps turning up and never buys, which is the exact failure the brief
+     asks the tool to avoid. */
+  let trajectory;
+  if (n === 1) trajectory = 12;                       // nothing to read yet, sit in the middle
+  else if (delta > 0) trajectory = 25;
+  else if (delta < 0) trajectory = 6;
+  else if (!everHot && n >= 3) trajectory = 0;        // met three times, never once hot
+  else trajectory = 12;
+
+  const latest = list[n - 1] || {};
+  const icp = SEGMENT_POINTS[latest.segment] ?? 10;
+  const seniority = seniorityPoints(latest.title);
+  const recency = overdue ? 0 : 10;
+
+  return Math.max(0, Math.min(100, signal + trajectory + icp + seniority + recency));
+}
+
+/* The bands exist so a rep can sort and stop reading. They are call order,
+   not a verdict: the verdict is the label next to them. */
+const PRIORITY_BANDS = [
+  { min: 80, label: "Call first" },
+  { min: 60, label: "This month" },
+  { min: 40, label: "Keep warm" },
+  { min: 0,  label: "Low signal" },
+];
+const priorityBand = p => PRIORITY_BANDS.find(b => p >= b.min) || PRIORITY_BANDS[3];
+

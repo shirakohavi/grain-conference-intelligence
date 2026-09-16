@@ -8,13 +8,18 @@
      · a model asked to do arithmetic will quietly get it wrong
      · a rule asked "is this the same human?" has no way to read context
 
-   Six jobs qualify:
-     1. mineSignals     , pull conference names out of Slack / meeting notes
-     2. discover        , propose events we don't already track
-     3. interpretScore  , turn five numbers into an attend/skip argument
-     4. adjudicateMatch , same person, or two people with the same name?
-     5. relationshipArc , what changed across meetings, and what to do now
-     6. parseCapture    , one messy sentence on a show floor -> clean fields
+   Three jobs qualify, and all three are reachable from the UI. That is the
+   whole list, deliberately:
+     1. interpretScore  , turn four numbers into an attend/skip argument
+     2. adjudicateMatch , same person, or two people with the same name?
+     3. relationshipArc , what changed across meetings, what to do about it,
+                          and the follow-up email already written
+
+   Three more were built and then cut: a conference discovery search, a
+   Slack / meeting-notes miner, and a free-text capture parser. All three
+   worked. None survived the question "would a rep open this twice?" (the
+   capture parser lost to a three-box form, which is faster and never
+   guesses), and an AI feature nobody opens is the definition of bolted on.
    ══════════════════════════════════════════════════════════════════════════ */
 
 const AI = (() => {
@@ -117,64 +122,7 @@ Grain sells two ways: direct to a platform's treasury/finance owner, and as an E
 Not a fit: domestic-only retail banking, consumer finance, in-store retail tech, crypto-native settlement.
 Be concrete and commercially blunt. A salesperson reads this between meetings. Never pad.`;
 
-  /* ── 1. SIGNAL MINER ────────────────────────────────────────────────────
-     Why AI: conference names appear inside sentences, misspelled, without
-     dates, mixed in with unrelated chat. No regex survives real Slack.     */
-  async function mineSignals(text, knownNames) {
-    /* This one has a flow of its own. The n8n version also matches each
-       mention against the conferences table and counts how many were raised
-       by customers rather than by us, work that belongs next to the
-       database, not in the browser. */
-    if (viaProxy()) {
-      try {
-        const r = await fetch(n8n() + "/webhook/grain-signal-miner", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        if (r.ok) return await r.json();
-      } catch (e) { /* fall through to the direct call below */ }
-    }
-    return call(
-      `${GRAIN}\nYou extract conference mentions from internal Slack threads and meeting summaries.`,
-      `Read the text below. Find every in-person conference, expo, summit or industry event mentioned.
-
-For each one return:
-  name       , the event's real name, corrected and expanded to its proper form
-  mentionedBy, who raised it, if a name is visible, else ""
-  context    , one short quote or paraphrase of WHY it came up
-  sentiment  , "positive" | "neutral" | "concern"  (concern = we are missing it / lost something by not going)
-  evidence   , "customer" if a prospect or customer raised it, "internal" if only our own team did
-  alreadyTracked, true if the name matches one of the events we already track
-
-Events we already track: ${knownNames.join(" | ")}
-
-Return {"mentions":[...]} and nothing else. If an event is mentioned twice, return it once with the stronger sentiment.
-
-TEXT:
-${text}`, { task: "mineSignals" });
-  }
-
-  /* ── 2. DISCOVERY ───────────────────────────────────────────────────────
-     Why AI: the useful question is not "list fintech conferences", it is
-     "given these four verticals and these gaps in our calendar, what are we
-     not seeing?" That is a reasoning task over our own coverage.          */
-  async function discover(known, gaps) {
-    return call(
-      `${GRAIN}\nYou find industry events a sales team has overlooked.`,
-      `We already track these events: ${known.join(" | ")}
-
-Gaps in our current plan: ${gaps}
-
-Propose up to 6 real, recurring industry events we are NOT tracking that a Grain rep should seriously consider.
-Favour events where our buyer concentrates rather than generic "big fintech" events, and cover our weaker verticals
-(travel wholesale, marketplaces, cross-border commerce), not just payments.
-
-For each: {"name","typicalMonth","typicalCity","vertical","whyUs" (one sentence, specific to Grain's ICP),
-"risk" (the honest reason it might not be worth it)}
-Return {"suggestions":[...]}. Only events you are confident genuinely exist. If unsure of a detail, say so in "risk".`, { task: "discover" });
-  }
-
-  /* ── 3. SCORE INTERPRETATION ────────────────────────────────────────────
+  /* ── 1. SCORE INTERPRETATION ────────────────────────────────────────────
      Why AI: the five numbers are computed by rules and are not in dispute.
      What a rep needs is the ARGUMENT, what the numbers mean together, and
      what the score structurally cannot see.                               */
@@ -196,7 +144,7 @@ Return JSON:
  "blindSpot": one thing the score structurally cannot see about this event that a human should check}`, { task: "interpretScore" });
   }
 
-  /* ── 4. MATCH ADJUDICATION ──────────────────────────────────────────────
+  /* ── 2. MATCH ADJUDICATION ──────────────────────────────────────────────
      Why AI: the rules produced two identical confidence scores for opposite
      situations, a job change and a common name collision. Telling them
      apart requires reading the rep's field notes.                         */
@@ -221,67 +169,55 @@ Return {"verdict":"same"|"different"|"unsure","confidence":0-100,
 "tell":"the single detail that settles it"}`, { task: "adjudicateMatch" });
   }
 
-  /* ── 5. RELATIONSHIP ARC ────────────────────────────────────────────────
-     Why AI: the pattern (warming / stalled) is arithmetic and already done.
-     Reading three sets of scrappy field notes and saying what actually
-     changed, and what to do on Tuesday, is not.                         */
+  /* ── 3. RELATIONSHIP ARC ────────────────────────────────────────────────
+     Why AI: the verdict is arithmetic and engine.js has already decided it.
+     The model is told the answer and never gets a vote, so the label on
+     screen stays reproducible. What it does instead is the part no rule can
+     do: read three sets of scrappy human notes, work out what actually moved,
+     and write the email that uses it.
+
+     The draft is written, never sent. A tool that emails prospects on its own
+     is a tool nobody deploys, HubSpot owns sequences, and the one action that
+     touches a customer keeps a human on it.                              */
   async function relationshipArc(contact) {
     const history = contact.encounters.map((e, i) =>
       `${i + 1}. ${e.at.slice(0, 10)} · ${e.confName} · met by ${e.rep} · signal: ${e.intent}
    as: ${e.name}, ${e.title} at ${e.company}
    note: "${e.note}"`).join("\n");
+
+    const flags = [
+      contact.changedCompany ? "CHANGED EMPLOYER between meetings" : "",
+      contact.repsInvolved.length > 1 ? `met by ${contact.repsInvolved.length} different reps` : "",
+      contact.overdue ? `OVERDUE: silent ${contact.daysSince} days against their usual gap of ${contact.usualGapDays}` : "",
+      contact.everHot ? "was hot at some point" : "has never once been hot",
+    ].filter(Boolean).join(" · ");
+
     return call(
-      `${GRAIN}\nYou brief a rep on a contact they have met more than once. The rep is walking into a room in five minutes.`,
+      `${GRAIN}
+You brief a rep on a contact they have met more than once, then draft the follow-up email for them.
+The rep is between meetings. They will read the brief in ten seconds and edit the email in thirty.`,
       `Contact: ${contact.name}, currently ${contact.title} at ${contact.company}
 Met ${contact.touches} times over ${contact.spanDays} days. Last seen ${contact.daysSince} days ago.
-Rule-based pattern: ${contact.pattern}${contact.changedCompany ? " · CHANGED EMPLOYER between meetings" : ""}${contact.repsInvolved.length > 1 ? " · met by different reps each time" : ""}
+Verdict, already decided by rule, do not argue with it: ${contact.verdict}
+Because: ${contact.test}
+${flags}
 
 ${history}
 
-Return JSON:
-{"arc": one sentence on what has actually changed across these meetings, cite the specific detail that moved,
- "verdict": one of "closing","worth pushing","needs a new angle","politely disengage",
- "why": one sentence defending that verdict honestly, if they are a tire-kicker, say so,
- "nudge": the exact next action, specific enough to do today. Name the hook from the notes. No generic "follow up".
- "avoid": one thing NOT to do with this person, based on the history}`, { task: "relationshipArc" });
-  }
-
-  /* ── 6. QUICK CAPTURE PARSER ────────────────────────────────────────────
-     Why AI: the whole point of the field interface is that the rep types one
-     scrappy line and keeps talking. Turning that into fields is the job AI
-     is actually best at, and a form is the thing it replaces.             */
-  async function parseCapture(raw, confName, confId) {
-    /* The n8n flow does more than parse: it also runs the duplicate check
-       against every lead on record and hands back candidates, so the rep is
-       warned while the person is still in front of them. */
-    if (viaProxy()) {
-      try {
-        const r = await fetch(n8n() + "/webhook/grain-capture", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ raw, conference_name: confName, conference_id: confId }),
-        });
-        if (r.ok) {
-          const j = await r.json();
-          return { ...(j.parsed || {}), duplicates: j.duplicates || [] };
-        }
-      } catch (e) { /* fall through */ }
-    }
-    return call(
-      `${GRAIN}\nYou convert a salesperson's hurried one-line note into structured CRM fields. They typed this while walking. Expect typos, no punctuation, abbreviations.`,
-      `Conference: ${confName}
-Raw note: "${raw}"
+Do not invent facts. Use only what is above. If the notes do not say why
+something changed, say the notes do not say. A job change, a budget, a date
+or a competitor that is not written above does not exist.
 
 Return JSON:
-{"name":"","company":"","title":"","email":"","phone":"",
- "intent":"cold"|"warm"|"hot",
- "note":"the rep's own observation, cleaned up but NOT embellished, keep their words and judgements",
- "icpSignals":[short phrases from the note that indicate Grain ICP fit, e.g. "multi-currency marketplace", "travel vertical"],
- "missing":[fields a rep should grab before this person walks away, most important first]}
-
-Rules: never invent an email or a company. Leave a field "" if it is not in the note.
-"intent": hot = asked about price, timeline, integration or next steps. warm = engaged, asked a real question.
-cold = polite, took a leaflet, no real signal.`, { task: "parseCapture" });
+{"arc": one sentence on what has actually changed across these meetings. Cite the specific detail that moved. If nothing moved, say that.,
+ "why": one sentence on what the verdict means commercially. Be blunt. If they are a tire-kicker, say so in those words.,
+ "nudge": the exact next action, specific enough to do today, naming the hook from the notes. Never "follow up" or "check in".,
+ "avoid": one thing NOT to do with this person, drawn from the history,
+ "email": {
+   "subject": under 60 characters, no colon-heavy marketing phrasing, reads like a person wrote it,
+   "body": "3 to 5 short sentences. Open by referencing the specific thing THEY said, quoting their own words where you can. Make one concrete ask. No pleasantries about hoping they are well, no company boilerplate, no bullet points, no signature block. Plain text."
+ }}`, { task: "relationshipArc" });
   }
 
-  return { cfg, hasKey, mode, viaProxy, n8n, call, mineSignals, discover, interpretScore, adjudicateMatch, relationshipArc, parseCapture };
+  return { cfg, hasKey, mode, viaProxy, n8n, call, interpretScore, adjudicateMatch, relationshipArc };
 })();
