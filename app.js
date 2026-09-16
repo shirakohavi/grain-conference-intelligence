@@ -132,11 +132,15 @@ const IC = {
 const icon = k => `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor"
   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
 
+/* Settings is deliberately not in here. The brief requires API keys to be
+   configurable rather than hardcoded, so the screen exists and works, but a
+   rep opening this on a conference floor has no reason to see a
+   configuration page. It lives at #settings, which is where whoever deploys
+   the tool goes once, and the README says so. */
 const NAVS = [
   ["conferences", "Conferences"],
   ["plan",        "Plan the year"],
   ["contacts",    "Contacts"],
-  ["settings",    "Settings"],
 ];
 
 function render() {
@@ -153,7 +157,17 @@ function render() {
   document.getElementById("main").innerHTML = VIEWS[S.view]();
   if (VIEWS[S.view].after) VIEWS[S.view].after();
 }
-function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
+function go(v) {
+  S.view = v; S.sel = null;
+  /* Leaving settings should drop the hash too, or a reload lands back there. */
+  if (v !== "settings" && location.hash === "#settings") history.replaceState(null, "", location.pathname + location.search);
+  render(); window.scrollTo(0, 0);
+}
+/* The only way in to settings: the address bar. */
+function openSettingsFromHash() {
+  if (location.hash === "#settings" && S.view !== "settings") { S.view = "settings"; S.sel = null; render(); }
+}
+window.addEventListener("hashchange", openSettingsFromHash);
 
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 1, CONFERENCES.  Decide what's worth attending.
@@ -1976,6 +1990,7 @@ function fatal(msg) {
     // Debounced: a burst of inserts from an n8n flow should repaint once.
     let t;
     DB.onChange(() => { clearTimeout(t); t = setTimeout(() => reload().catch(() => {}), 400); });
+    openSettingsFromHash();
   } catch (e) { fatal(e.message); }
 })();
 
