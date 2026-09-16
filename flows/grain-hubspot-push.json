@@ -35,7 +35,7 @@
     },
     {
       "parameters": {
-        "method": "POST",
+        "method": "PATCH",
         "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.email }}?idProperty=email",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppTokenApi",
@@ -63,7 +63,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// A 404 from the upsert means the contact does not exist yet, so create\n// it. Any other non-2xx is a real failure and should stop the run.\nconst r = $input.first().json;\nconst src = $('Shape the payload').first().json;\nif (r.statusCode >= 200 && r.statusCode < 300) {\n  return [{ json: { contactId: r.body.id, created: false, ...src } }];\n}\nif (r.statusCode === 404) return [{ json: { contactId: null, created: true, ...src } }];\nthrow new Error(`HubSpot returned ${r.statusCode}: ${JSON.stringify(r.body).slice(0, 300)}`);"
+        "jsCode": "// A 404 from the upsert means the contact does not exist yet, so create\n// it. Any other non-2xx is a real failure and should stop the run.\nconst r = $input.first().json;\nconst src = $('Shape the payload').first().json;\nif (r.statusCode >= 200 && r.statusCode < 300) {\n  return [{ json: { contactId: r.body.id, created: false, ...src } }];\n}\nif (r.statusCode === 404) return [{ json: { contactId: null, created: true, ...src } }];\nthrow new Error(`HubSpot returned ${r.statusCode}: ${JSON.stringify(r.body ?? r).slice(0, 400)}`);"
       },
       "id": "route",
       "name": "Exists or create",
