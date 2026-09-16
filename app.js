@@ -1655,6 +1655,11 @@ async function askArc(id) {
 }
 
 function drawContact(c) {
+  /* identities() returns the raw resolver output. The ICP fit, and the
+     segment borrowed from a colleague, are added by contactRows(), so the
+     drawer has to ask for the same enriched row the table renders rather
+     than reading fields that only exist one layer up. */
+  const row = contactRows().find(r => r.id === c.id) || c;
   const leadId = c.encounters[c.encounters.length - 1].leadId;
   const rel = (LEADS.find(l => l.id === leadId) || {}).relationship_pattern || c.verdict;
   const NOW = new Date().toISOString();
@@ -1664,6 +1669,16 @@ function drawContact(c) {
       <h3 style="margin:0">${esc(c.name)}</h3>
       <div class="tiny dim" style="margin-top:3px">${esc(c.title)} · ${esc(c.company)}${c.email ? " · " + esc(c.email) : ""}</div>
       <div class="row tiny" style="margin-top:8px;gap:6px;align-items:center">
+        ${/* The segment decides 70 percent of the ICP fit, so a contact card
+             that shows the fit and hides what produced it is asking to be
+             taken on trust. Borrowed from a colleague is said out loud. */""}
+        ${row.segment
+          ? `<span class="pill ${TAG_TONE(row.segment)}">${esc(row.segment)}</span>`
+          : row.icp && row.icp.borrowed
+            ? `<span class="pill outline" title="Borrowed from a colleague at the same company">${esc(row.icp.borrowed)}, borrowed</span>`
+            : `<button class="pill outline" style="cursor:pointer"
+                 onclick="openEditContact('${c.id}')" title="Set the segment">Segment not set</button>`}
+        ${icpPill(row.icp, { ask: true })}
         <select class="status rel-${rel}" onchange="setRelationship('${leadId}', this.value);openContact('${c.id}')">
           ${LEAD_STATUS.map(o => `<option${rel === o ? " selected" : ""}>${o}</option>`).join("")}
         </select>

@@ -323,11 +323,25 @@ function noteTyped(v) {
   noteTimer = setTimeout(() => saveNote(), 700);
 }
 function setIntent(v) { K.note.intent = v; render(); saveNote(); }
-function setSegment(sg) {
+async function setSegment(sg) {
   K.note.segment = K.note.segment === sg ? "" : sg;
   render();
   saveNote();
-  if (K.lead) DB.sb.from("leads").update({ icp_segment: K.note.segment || null }).eq("id", K.lead.id);
+  if (!K.lead) return;
+  /* This used to be a bare DB.sb.from(...).update(...) with nothing awaiting
+     it. A supabase-js query builder is lazy: it only sends the request when
+     something consumes the promise. Nothing did, so every segment a rep
+     tapped on a show floor was set on screen and never left the browser.
+     Awaited now, and a failure says so instead of looking saved. */
+  try {
+    const { error } = await DB.sb.from("leads")
+      .update({ icp_segment: K.note.segment || null }).eq("id", K.lead.id);
+    if (error) throw error;
+    K.lead.icp_segment = K.note.segment || null;
+    flag("Saved");
+  } catch (e) {
+    flag("Not saved");
+  }
 }
 
 function flag(t) { K.saved = t; const e = document.getElementById("saved"); if (e) e.textContent = t; }
