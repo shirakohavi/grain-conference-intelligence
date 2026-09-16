@@ -65,11 +65,14 @@ const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
    it runs on a different device. */
 /* Who is logged in, as a roster id rather than a typed string. The old free
    text is still read once so an existing browser does not lose its setting. */
+/* Who is logging a meeting is asked on the form that logs it, and nowhere
+   else. There used to be a "your name" setting as well, which was a second
+   place to answer the same question and a settings screen nobody should
+   have to visit before their first contact. The form remembers the last
+   person picked in this browser, which is the useful half of what the
+   setting did, without being a feature anyone has to find. */
 const REP_ID = () => localStorage.getItem("rep_id") || "";
-const REP_NAME = () => {
-  const t = teamById(REP_ID());
-  return t ? t.name : (localStorage.getItem("rep_name") || "Unassigned");
-};
+const REP_NAME = () => (teamById(REP_ID()) || {}).name || "Unassigned";
 /* A dropdown over the roster. Used anywhere a rep has to say who they are,
    so the name always joins back to a person instead of being spelled three
    different ways by the same human. */
@@ -1791,8 +1794,6 @@ VIEWS_SETTINGS = () => {
         <input class="inp" placeholder="https://admin-n8n.optimally-ai.com"
           value="${esc(localStorage.getItem("n8n_base") || "")}"
           oninput="localStorage.setItem('n8n_base',this.value.replace(/\\/+$/,''))">
-        <label>Your name</label>
-        ${repSelect(REP_ID(), "localStorage.setItem('rep_id',this.value);render()", { placeholder: "Who is logging leads" })}
       </div>
       <div class="row" style="margin-top:11px">
         <button class="btn" onclick="testProxy()">Test the webhook</button>
