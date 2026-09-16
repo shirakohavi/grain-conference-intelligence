@@ -1,161 +1,224 @@
-# Conference Intelligence — Grain Sales
+# Conference Intelligence, Grain sales
 
-A single tool for the four decisions a Grain rep makes about conferences across a year:
-**which ones to attend, who covers what, capturing people on the floor, and recognising
-relationships that build across events.**
+One tool for the four decisions a Grain rep makes about conferences across a
+year: **which ones to attend, who covers what, capturing people on the floor,
+and working out which of those people is worth another flight.**
 
-**Live:** _paste your GitHub Pages URL here_
-**Stack:** static HTML/CSS/JS. No framework, no build step, no server. Open `index.html` and it runs.
+**Live:** https://shirakohavi.github.io/grain-conference-intelligence/
+**Stack:** static HTML, CSS and JavaScript. No framework, no build step.
+Postgres behind it (Supabase) so the team shares one set of records, and n8n
+for the work that cannot happen in a browser.
 
 ---
 
-## The one design decision everything else follows from
+## The decision everything else follows from
 
-> **Rules where the answer must be reproducible. AI where the job actually requires judgement.**
+> Rules where the answer has to be reproducible. AI where the job needs
+> judgement.
 
-A conference score a sales lead cannot reproduce is a score they will not trust, and a model
-asked to do arithmetic will quietly get it wrong. So:
+A score a sales lead cannot reproduce is a score they will not trust, and a
+model asked to do arithmetic gets it quietly wrong. So the split is explicit:
 
-| Computed in `engine.js` (plain arithmetic, auditable) | Sent to a model in `ai.js` (judgement / unstructured language) |
+| Arithmetic, in `engine.js` | Judgement, in `ai.js` and `flows/` |
 |---|---|
-| ICP fit score and tier | The attend/skip *argument*, and what the score can't see |
-| Cost per reachable ICP contact | — |
-| Trip clustering (dates + geography + travel cost) | — |
-| Date clashes and coverage gaps | — |
-| Candidate contact matches + confidence 0–100 | Adjudicating the ambiguous ones (50–84) |
-| Relationship *pattern* (warming / stalled / cooling) | What actually changed, and the specific next action |
-| — | Pulling conference names out of Slack threads and meeting notes |
-| — | Turning a rep's one-line show-floor note into structured fields |
+| Conference score and A to D tier | The attend or skip argument, and what the score structurally cannot see |
+| Cost per reachable ICP contact | |
+| ICP fit for a person, High / Medium / Low | |
+| Trip clusters, date clashes, coverage gaps | |
+| Candidate identity matches and a 0 to 100 confidence | Adjudicating the ambiguous ones, 50 to 84 |
+| Lead status: New, Developing, Active, Dormant | The follow-up email, and what to do next |
+| | Finding conferences nobody on the team has heard of |
 
-Every AI call is in one file, and each one has a comment saying why a rule couldn't do it.
-
----
-
-## The five screens
-
-**Conferences** — 51 real fintech/payments/travel/commerce events scored 0–100 and tiered A–D.
-Weights are sliders, because the weighting is the sales lead's call, not the tool's; everything
-re-ranks live. Open a row for the five component scores, the cost arithmetic, and the AI read.
-
-**Plan the year** — month-by-month coverage, regions where A-tier events are going uncovered,
-date clashes between two events worth attending, and **trips that could be one trip** (same
-region, within 10 days, both worth attending) with the travel saving.
-
-**Field mode** — one big box. The rep types what they'd say to a colleague and keeps talking;
-structuring happens after save, not while the person is standing there. It saves the raw note
-locally first, so conference wifi doesn't have to work.
-
-**Contacts** — encounters resolved into people, the review queue for ambiguous matches, and a
-relationship read on anyone met more than once.
-
-**Signal miner** — paste a Slack thread or meeting summary; it extracts every conference
-mentioned, who raised it, and **whether it was a customer or just us**. Anything it finds shows
-as a ★ on the Conferences tab, so the signal lands where the decision gets made.
+Every model call is in one place, and each one carries a comment saying why a
+rule could not do it.
 
 ---
 
-## Scoring
+## The screens
 
-Five inputs, each 0–100, weighted (defaults in brackets):
+**Conferences.** 36 events, scored and tiered, sorted by fit rather than by
+date. Filter by region, vertical, size, status, origin, or who is covering it.
+Status and coverage are set in the row. The scoring weights are sliders and
+everything re-ranks live, because the weighting is the sales lead's call.
 
-- **ICP density (30)** — share of the room that looks like a PSP, travel wholesaler, cross-border
-  payment company, or a marketplace/platform carrying FX exposure
-- **Decision-maker seniority (20)** — is the person who owns the FX decision personally there
-- **Cross-border relevance (20)** — is the agenda about multi-currency flow, or domestic banking
-- **Cost efficiency (20)** — see below
-- **Embedded-partner presence (10)** — platforms who could *resell* Grain, not just buy it
+**Plan the year.** Month by month coverage, regions going uncovered, date
+clashes between two events worth attending, and events close enough in time and
+geography to be one trip.
 
-**Cost efficiency is the part worth arguing about.** A rep holds roughly 20 real conversations a
-day on a show floor. Above that, extra attendees stop being reachable. So efficiency is
-`(ticket + travel from Tel Aviv) ÷ reachable ICP contacts`, where reachable is capped at
-`20 × days`. This is why a free Dubai expo can out-rank a €3,670 flagship, and why the model
-doesn't reward size for its own sake.
+**Contacts.** People, assembled from meetings rather than typed in. Lead
+status, ICP fit, how many times met, where, and which reps spoke to them. A
+review queue holds the identity matches a human should settle.
 
-The raw weighted average of real conferences bunches between 15 and 75, which makes tiers
-useless to look at, so it's stretched onto 0–100 between two stated anchors. **Ranking is
-unaffected** — that's presentation, not weighting.
+**Field mode** (`join.html`). A separate page for a tablet at a stand. Work
+email, name, company, role, then the note and the signal. The record is written
+before the note is typed, because what gets lost at a booth is the half-finished
+form. It never shows a prospect the pipeline.
 
-Tiers: **A** ≥80 book it · **B** ≥65 one rep, name three targets first · **C** ≥45 only if it
-bolts onto a trip · **D** skip.
+**Settings.** The n8n base URL, the HubSpot relay, and an optional model key.
+Nothing is hardcoded.
+
+---
+
+## Scoring a conference
+
+Four inputs, each 0 to 100, weighted. Defaults in brackets, all editable.
+
+- **ICP fit (40)** how much of the room is a PSP, a marketplace, a travel
+  platform, or a treasury team carrying FX exposure
+- **Seniority (20)** whether the people who own the FX decision are personally
+  there
+- **Cost per conversation (20)** see below
+- **Strategic reach (20)** the regions and partner types Grain wants next
+
+Three of those are a person's estimate, entered once per event. The fourth is
+arithmetic: `(ticket + travel from Tel Aviv) ÷ reachable ICP contacts`, where
+reachable is capped by how many conversations two people can physically have in
+the days they are there. That cap is why a 500-person travel payments summit in
+Palma at €28 per qualified conversation outranks Money20/20 USA at €74, and why
+size on its own earns nothing.
+
+Tiers: **A** 80+, book it. **B** 65+, one rep, name three targets first.
+**C** 45+, only if it bolts onto a trip. **D**, skip.
+
+An event nobody has scored reads **not scored**, not "low". A missing answer is
+not a bad one.
+
+---
+
+## Scoring a person
+
+ICP fit is company fit at 70 percent plus role fit at 30, banded High (80+),
+Medium (50 to 79) and Low. Company fit comes from the ICP segment on the
+contact. Role fit comes from the job title, on a seniority ladder from founder
+and C-level down to analyst.
+
+A segment describes the employer rather than the person, so a contact with no
+segment borrows one from a colleague at the same company, matched on a
+normalised company name so monday, monday.com and Monday.com Ltd count as one
+employer. A borrowed band is drawn differently and says where it came from.
 
 ---
 
 ## Cross-conference contact tracking
 
-Rules generate candidates and a 0–100 confidence. Above 85 they merge silently; below 50 they
-stay apart; **50–84 goes to a review queue** where the model reads the reps' field notes and
-decides.
+Rules generate candidates and a confidence. Above 85 they merge silently, below
+50 they stay apart, and **50 to 84 goes to a review queue** where a person
+decides and the model advises.
 
-Handled: nickname expansion (Bea → Beatrice, Dan → Daniel), transliteration differences
-(Yusuf Al-Rashid / Yousef Alrashid), employer changes between events, one rep getting a phone
-number instead of an email, and the same person logged by different reps.
+Matching uses Jaro-Winkler on the name, a nickname map, email local-part and
+domain comparison, and company and title agreement, resolved with union-find so
+three records of one person collapse into one contact.
 
-The case that makes the split worth it is in the seed data. **Two pairs score almost the same
-and get opposite answers:**
+Handled deliberately:
 
-- *Danielle Roux* at Trustly vs at Checkout.com → **50** → same person, changed jobs
-- *David Cohen* at Riskified vs at Payoneer → **56** → two different people
+- **Name variants.** Bea and Beatrice at two different events, merged.
+- **Transliteration.** Yusuf Al-Rashid and Yousef Alrashid at Tap Payments,
+  score 78, sent to review because one record has no email.
+- **Job changes.** David Cohen at Riskified and David Cohen at Payoneer, score
+  56. Either a job change, which is the most useful thing a rep can learn at a
+  conference, or two people. The tool refuses to decide and refuses to average.
+- **Missing fields.** A rep who got a name and a company but no email.
+- **Different reps, same person**, logged in different words.
 
-No string comparison can separate those. Both are settled by what the rep wrote down.
-Merging two people wrongly corrupts a CRM and has a rep greet a stranger by the wrong history,
-so the model is told to be conservative and the human always has the final override.
+Merging two people wrongly corrupts a CRM and makes a rep greet a stranger with
+the wrong history, so the threshold is conservative and a person always has the
+override.
 
-Once someone's been met more than once, the pattern (Warming / Stalled / Cooling / Flat) is
-arithmetic on the intent sequence. The **interpretation and the nudge** are the AI's job —
-and the tool is willing to say *politely disengage*, which is the answer a rep needs on a
-friendly contact who renewed with an incumbent five months ago.
+**Lead status** is the relationship, worked out from the meeting history: New on
+a first interaction, Developing while it moves, Active once a budget or a date is
+named, Dormant when there is no momentum. Three polite meetings with nothing
+named reads Dormant, which is the tire-kicker the brief asks about. A rep can
+override any of it, and the tool then shows the rule and the override side by
+side rather than silently replacing one with the other.
+
+**The nudge** measures each person against their own rhythm rather than a fixed
+timer. Ninety-one days quiet against a usual gap of twenty-seven is a signal. The
+same ninety-one days on a contact seen twice a year is not.
+
+---
+
+## The AI features
+
+1. **Conference discovery.** A weekly n8n flow, also on a button. Claude with
+   web search, told what Grain's buyers look like and told that a blank field is
+   a correct answer. New events arrive tagged `AI sourced` with the page the
+   search cited, carrying whatever it found and blanks where it found nothing.
+   They carry no tier: the flow is allowed to add rows and not to rank them.
+2. **The relationship arc.** Runs after every meeting including the first. Reads
+   the note history, writes the follow-up the rep would write, signs it from
+   whoever logged the meeting, adds their calendar link. Lands in HubSpot as a
+   draft. Never sent.
+3. **The score interpreter.** Given the same four numbers the arithmetic used,
+   it argues with the result and says what the score cannot see.
+4. **Identity adjudication.** On an ambiguous pair it gets the evidence a rep
+   would and says which way it leans. It advises. It does not merge.
+
+Calls go through n8n rather than from the browser, so the key stays in a
+credential store and whoever opens the live URL gets live answers without
+pasting anything. The webhook accepts three named tasks and nothing else, so the
+URL is not an open model proxy. With no n8n URL set, every feature returns a
+written fallback of the same shape, badged as such, so nothing dead-ends.
+
+---
+
+## HubSpot
+
+A browser cannot call HubSpot directly, and a private app token in client-side
+JavaScript is readable by anyone who opens the page. So the app posts to a relay
+you configure and n8n does the write, from both the desktop app and field mode.
+
+One contact per person, matched on work email, so someone met at four
+conferences is one record with four notes rather than four records. Each push
+carries the Grain properties (lead status, ICP fit, segment, conference touches,
+first and last met), every meeting note as a timeline note, and the follow-up as
+a draft email.
+
+Two custom contact properties are needed in the portal: `grain_lead_status` and
+`grain_icp_fit`.
 
 ---
 
 ## Running it
 
-Open `index.html`. That's it.
+Open `index.html`. That is the whole build step.
 
-**Deploying:** drop the folder into a GitHub repo, Settings → Pages → deploy from `main`,
-`/root`. A non-technical person updates the conference list by editing `data/conferences.js` in
-the GitHub web editor — it's a commented list of plain objects — and the site rebuilds itself.
+Hosting is GitHub Pages from `main`, root folder. `DEPLOY.md` has the steps.
 
-**AI keys** are configured in Settings and stored in `localStorage`. Nothing is hardcoded and
-nothing is committed. Anthropic or OpenAI, model name editable.
+Configuration lives in Settings and in this browser only. Nothing is hardcoded
+and nothing is committed. The Supabase key in `config.js` is the publishable
+one, which is public by design and gated by row-level security; the
+`service_role` key is not in this repo and never has been.
 
-**Demo mode:** with no key set, every AI feature returns a pre-written response *of the same
-shape*, badged `demo response`. This was deliberate — whoever opens the live URL won't have
-pasted a key, and a tool that dead-ends on a missing key doesn't get evaluated.
-
-**HubSpot:** a browser can't call HubSpot directly (no CORS, and a private-app token in
-client-side JS is readable by anyone who opens the page). The tool builds the exact payload —
-contact properties plus every encounter as timeline notes — and POSTs it to a relay URL you
-configure (a Make/Zapier webhook or a small serverless function). With no relay set it shows
-the payload rather than pretending to sync.
+Updating the conference list needs no developer: Add conference on the
+Conferences page, or Edit on any row.
 
 ---
 
-## What I'd build next, in order
+## What I would build next
 
-1. **Replace the Signal Miner's paste box with a Slack MCP connector and a meeting-notes API.**
-   The parsing is the hard part and it's done; the input is a swap. This is the feature I'd
-   prioritise because it's the only one that gets *better* the more the team uses Slack normally.
-2. **Pre-conference target lists.** The tool knows who we've met and who's warming; before a
-   trip it should say "these six people you already know will probably be at this event, here's
-   the opener for each" instead of waiting for the rep to bump into them.
-3. **Close the loop with outcomes.** Right now ICP density is a human estimate. Once leads carry
-   HubSpot deal outcomes, the estimates become measured — cost per *closed* contact rather than
-   per conversation — and the score stops being an opinion.
-4. **Voice capture in field mode.** Typing on a show floor is still friction. The parser already
-   handles messy language; the missing piece is the microphone.
-5. **Multi-rep sync.** Everything is `localStorage` today, which is right for a scoped build and
-   wrong for a team — the review queue in particular only pays off when three reps' notes land
-   in the same place.
+Close the loop after the event, across email and LinkedIn, pointed at the next
+conference instead of the last one. Before an event, take everyone already met
+and work out who is going, which people often state on LinkedIn. If they are,
+draft the "we are both at Money20/20 in three weeks, here is what you said last
+time, here is twenty minutes in my calendar". If that person is not going but a
+colleague is, surface them instead. That is a warm introduction the team has
+already earned and currently throws away every year.
+
+---
 
 ## Files
 
 ```
-index.html          markup + script tags
-styles.css
-data/conferences.js 51 events, commented for non-technical editing
-data/seed.js        22 seeded encounters + 4 sample Slack/meeting texts
-engine.js           scoring, clustering, clash detection, identity resolution — no AI
-ai.js               every model call, each with a comment on why a rule can't do it
-demo.js             pre-written fallbacks so the tool works without a key
-app.js              views and state
+index.html     the app shell and script tags
+join.html      field mode, a separate page on purpose
+engine.js      scoring, clustering, clashes, identity resolution. No AI
+ai.js          every model call, each with a comment on why a rule cannot do it
+demo.js        written fallbacks so the tool works without a key
+app.js         views and state
+join.js        field mode
+db.js          Postgres reads and writes
+config.js      project URL and the publishable key
+styles.css     structure
+theme.css      visual layer, loaded last
+flows/         the three n8n workflows, as JSON, with a README
 ```
