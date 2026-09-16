@@ -1331,6 +1331,7 @@ function openEditContact(contactId) {
   const seen = f => [...new Set(recent.map(e => e[f]).filter(Boolean))];
   S.rec = {
     leadId: c.encounters[c.encounters.length - 1].leadId,
+    encId: c.encounters[c.encounters.length - 1].id,
     merged: false,
     name: c.name || "", email: c.email || "",
     title: c.title || "", company: c.company || "",
@@ -1348,7 +1349,7 @@ function openReconcile(r) {
   const other  = target === r.b ? r.a : r.b;
   const pair = f => [...new Set([target[f], other[f]].filter(Boolean))];
   S.rec = {
-    leadId: target.leadId, merged: true,
+    leadId: target.leadId, encId: target.id, merged: true,
     name: target.name || other.name || "",
     email: target.email || other.email || "",
     title: target.title || other.title || "",
@@ -1397,11 +1398,26 @@ function closeReconcile() {
 
 async function saveReconcile() {
   const d = S.rec; if (!d) return;
+  const v = x => (x || "").trim() || null;
   try {
     await DB.updateLead(d.leadId, {
-      full_name: d.name.trim() || null, work_email: d.email.trim() || null,
-      title: d.title.trim() || null, company: d.company.trim() || null,
+      full_name: v(d.name), work_email: v(d.email),
+      title: v(d.title), company: v(d.company),
     });
+    /* The lead row is not what the contact card reads. A contact's name,
+       company and role come off its most recent encounter, because an
+       encounter records who this person was on the day you met them, which
+       is what makes a job change visible instead of silently overwritten.
+       So an edit that only wrote to the lead saved correctly and appeared
+       to do nothing. The newest snapshot is corrected too. Older ones are
+       left alone: they are the history, and rewriting them would erase the
+       job change this design exists to show. */
+    if (d.encId) {
+      await DB.updateEncounter(d.encId, {
+        name_as_given: v(d.name), email_as_given: v(d.email),
+        title_as_given: v(d.title), company_as_given: v(d.company),
+      });
+    }
     S.rec = null; S.reconcile = null; closeDrawer();
     await reload();
     toast(`${d.name} updated.`);

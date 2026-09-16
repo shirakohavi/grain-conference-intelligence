@@ -17,9 +17,11 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 const K = {
-  /* Both the event and the rep have to be known before the tablet can be
-     handed over, so either one missing sends us back to setup. */
-  stage: (localStorage.getItem("fm_event") && localStorage.getItem("rep_id")) ? "form" : "setup",
+  /* Always opens on setup, even when this browser remembers the last pair.
+     Whoever picks the tablet up confirms which event they are at and which
+     of them is logging, before a prospect touches it. The remembered pair is
+     preselected, so confirming is one tap rather than a form to fill in. */
+  stage: "setup",
   eventId: localStorage.getItem("fm_event") || "",
   repId: localStorage.getItem("rep_id") || "",
   team: [],
@@ -88,9 +90,9 @@ async function renderSetup() {
       <select onchange="K.eventId=this.value">
         ${K.conferences.map(c => `<option value="${c.id}"${K.eventId === c.id ? " selected" : ""}>${esc(c.name)}, ${esc(c.city)}</option>`).join("")}
       </select></div>
-    <div class="k-field"><label>Your name</label>
+    <div class="k-field"><label>Grain sales rep</label>
       <select onchange="K.repId=this.value">
-        <option value="">Choose your name</option>
+        <option value="">Choose a rep</option>
         ${K.team.map(t => `<option value="${t.id}"${K.repId === t.id ? " selected" : ""}>${esc(t.name)}</option>`).join("")}
       </select></div>
     <button class="k-go" onclick="start()">Start</button>
@@ -102,7 +104,7 @@ function start() {
   /* The rep has to pick a name off the roster. Without it the encounter
      cannot say who spoke to this person, which is the column the contacts
      view is built around. */
-  if (!K.team.find(t => t.id === K.repId)) { alert("Pick your name."); return; }
+  if (!K.team.find(t => t.id === K.repId)) { alert("Pick the rep logging this."); return; }
   localStorage.setItem("fm_event", K.eventId);
   localStorage.setItem("rep_id", K.repId);
   K.stage = "form"; render();
@@ -113,7 +115,6 @@ function start() {
    SCREEN ONE. A title and three boxes.
    ══════════════════════════════════════════════════════════════════════ */
 function renderForm() {
-  const conf = K.conferences.find(c => c.id === K.eventId);
   el().innerHTML = `
     <div class="k-exit" onclick="cornerTap()"></div>
     <div class="k-wrap"><div class="k-card">
@@ -139,11 +140,18 @@ function renderForm() {
 
       <button class="k-go" id="go" ${ready() ? "" : "disabled"} onclick="lookUp()">Continue</button>
 
-      <button class="k-foot k-back" onclick="backToSetup()"
-        title="Change which event and which of us is logging">
-        ${conf ? esc(conf.name) : "No event"}${K.repId ? " · " + esc((K.team.find(t => t.id === K.repId) || {}).name || "") : ""}
-        <span class="k-backhint">change</span>
-      </button>
+      <div class="k-context">
+        <div class="k-cx"><label>Event</label>
+          <select onchange="setEvent(this.value)">
+            ${K.conferences.map(c => `<option value="${c.id}"${K.eventId === c.id ? " selected" : ""}
+              >${esc(c.name)}</option>`).join("")}
+          </select></div>
+        <div class="k-cx"><label>Logged by</label>
+          <select onchange="setRep(this.value)">
+            ${K.team.map(t => `<option value="${t.id}"${K.repId === t.id ? " selected" : ""}
+              >${esc(t.name)}</option>`).join("")}
+          </select></div>
+      </div>
     </div></div>`;
 }
 
@@ -359,11 +367,12 @@ function nextPerson() {
 /* The footer is the way back. It is small and it names what it would change,
    because the screen it sits on is the one a prospect is holding: it has to
    be findable by the rep and uninteresting to a stranger. */
-function backToSetup() {
-  if (K.busy) return;
-  if (!confirm("Change the event or who is logging?")) return;
-  K.stage = "setup"; K.conferences = []; render();
-}
+/* Changing either one happens in place. No dialog, no losing what is typed:
+   a rep who has just walked to a different stand should not have to answer a
+   question about it. Both persist immediately, so the next person captured
+   on this tablet inherits the pair. */
+function setEvent(id) { K.eventId = id; localStorage.setItem("fm_event", id); }
+function setRep(id)   { K.repId   = id; localStorage.setItem("rep_id",   id); }
 
 /* ── Getting out. Five taps in the top-left corner. ─────────────────────── */
 let taps = 0, tapTimer;

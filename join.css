@@ -98,6 +98,18 @@ body.kiosk{background:#2B3674;min-height:100vh;margin:0;
 /* The way back to event and rep. Small on purpose: the rep needs to find it,
    a prospect holding the tablet has no reason to press it, and it confirms
    before it does anything. */
+/* The event and the rep, changeable without leaving the form. Kept at the
+   bottom and kept small: this screen is the one a prospect is holding. */
+.k-context{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:26px;
+  padding-top:18px;border-top:1px solid #EDF0F7}
+.k-cx label{display:block;font-size:10.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:#A3AED0;margin-bottom:5px}
+.k-cx select{width:100%;font-size:13px;padding:9px 10px;border:1.5px solid #E1E6F3;
+  border-radius:9px;background:#FBFCFE;color:#2B3674;-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' stroke='%23A3AED0' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center}
+.k-cx select:focus{outline:0;border-color:#3D82F7;box-shadow:0 0 0 3px #E9F0FE}
+
 .k-back{background:none;border:0;cursor:pointer;font:inherit;color:inherit;
   display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px}
 .k-back:hover{background:rgba(43,54,116,.05)}

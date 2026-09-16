@@ -137,6 +137,16 @@ const DB = (() => {
     return Object.values(byId);
   }
 
+  /* Correcting the snapshot an encounter was logged under. Used only when a
+     person edits a contact's details: the contact card reads its name,
+     company and role off the most recent encounter, so writing to the lead
+     row alone changes the database and nothing the rep can see. */
+  async function updateEncounter(id, fields) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const { error } = await sb.from("encounters").update(fields).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   async function updateConference(id, fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { error } = await sb.from("conferences").update(fields).eq("id", id);
@@ -187,5 +197,6 @@ const DB = (() => {
   }
 
   return { sb, loadAll, findPossibleDuplicates, searchCandidates, upsertLead, addEncounter,
-           setConferenceStatus, updateConference, addConference, updateLead, onChange };
+           setConferenceStatus, updateConference, addConference, updateLead,
+           updateEncounter, onChange };
 })();
