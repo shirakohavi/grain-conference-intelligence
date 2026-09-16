@@ -37,7 +37,10 @@ const el = () => document.getElementById("app");
 const dmy = iso => { const d = new Date(iso), p = n => String(n).padStart(2, "0");
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`; };
 
-const SEGMENTS = ["Marketplace", "PSP", "Travel", "Payroll", "BNPL", "Stablecoin", "Other"];
+/* The same eight the scoring table knows, in the same order as the desktop
+   app. Treasury was missing here, which meant a rep at a booth could not
+   record one of the two best-fitting segments there is. */
+const SEGMENTS = ["PSP", "Treasury", "Marketplace", "Travel", "BNPL", "Payroll", "Stablecoin", "Other"];
 /* The chip is the value, written as something a rep can check against their
    own note rather than something they have to feel. "Real question" is a
    judgement two reps will disagree about, and this field decides whether
@@ -285,6 +288,15 @@ function renderCard() {
         </div>`).join("")}
       </div>` : ""}
 
+      <!-- Segment first. It is one tap, it decides most of the ICP score, and
+           at the bottom of the screen it was the thing everyone walked past. -->
+      <div class="k-field"><label>What do they do?${
+        K.note.segment ? "" : ` <span class="k-need">needed for the score</span>`}</label>
+        <div class="k-chips">
+          ${SEGMENTS.map(sg => `<button class="k-chip ${K.note.segment === sg ? "on" : ""}"
+            onclick="setSegment('${sg}')">${esc(sg)}</button>`).join("")}
+        </div></div>
+
       <div class="k-field"><label>What did they say?</label>
         <textarea class="k-ta" id="note" placeholder="asked how we price the hedge on THB, said FX is eating their margin"
           oninput="noteTyped(this.value)">${esc(K.note.text)}</textarea></div>
@@ -293,12 +305,6 @@ function renderCard() {
         <div class="k-chips">
           ${INTENTS.map(([v, lab]) => `<button class="k-chip sig-${v} ${K.note.intent === v ? "on" : ""}"
             onclick="setIntent('${v}')">${lab}</button>`).join("")}
-        </div></div>
-
-      <div class="k-field"><label>Segment</label>
-        <div class="k-chips">
-          ${SEGMENTS.map(sg => `<button class="k-chip ${K.note.segment === sg ? "on" : ""}"
-            onclick="setSegment('${sg}')">${esc(sg)}</button>`).join("")}
         </div></div>
 
       ${K.err ? `<div class="k-note k-bad">${esc(K.err)}</div>` : ""}

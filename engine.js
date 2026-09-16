@@ -708,6 +708,20 @@ function groupByCompany(rows) {
   }).sort((a, b) => b.rows.length - a.rows.length || a.name.localeCompare(b.name));
 }
 
+/* An ICP segment describes the employer, not the person. Two people at the
+   same company cannot honestly be a PSP and a nothing, which is what the
+   table showed whenever one of them was logged without the segment being
+   picked. So a contact with no segment borrows the one a colleague already
+   has, matched on the normalised company name so monday, monday.com and
+   Monday.com Ltd count as one employer. It is labelled as borrowed wherever
+   it shows, because nobody said it about this person. */
+function segmentFromColleagues(company, contacts, selfId) {
+  const key = normCompany(company);
+  if (!key) return null;
+  const hit = contacts.find(c => c.id !== selfId && c.segment && normCompany(c.company) === key);
+  return hit ? hit.segment : null;
+}
+
 function icpFit({ segment, title, company } = {}) {
   const co = SEGMENT_FIT[segment];
   const companyFit = co == null ? 45 : co;   // unclassified is a middling guess

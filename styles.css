@@ -221,6 +221,11 @@ tbody tr.picked{background:var(--accent-soft)}
 .pill.bad{background:#FCEEEC;color:#B03A2E}
 .pill.outline{background:transparent;color:#9AA3C4;box-shadow:inset 0 0 0 1px var(--line)}
 .pill.ai{background:#E8EEFC;color:#2F4B8F;font-weight:500}
+/* A band the tool worked out from a colleague's segment rather than from
+   anything said about this person. Same verdict, visibly second-hand. */
+.pill.icp.borrowed{border:1px dashed currentColor;background:transparent}
+.whyborrow{font-size:11.5px;line-height:1.5;color:#8A6516;background:#FCF3E4;
+  border-radius:8px;padding:8px 10px;margin-top:8px}
 
 /* The event name is the row's anchor, so give it room so it stops wrapping to
    three lines, and let it read as the primary text. */

@@ -100,6 +100,9 @@ body.kiosk{background:#2B3674;min-height:100vh;margin:0;
    before it does anything. */
 /* The event and the rep, changeable without leaving the form. Kept at the
    bottom and kept small: this screen is the one a prospect is holding. */
+.k-need{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:#B4762A;background:#FCF3E4;padding:2px 7px;border-radius:5px;margin-left:6px}
+
 .k-context{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:26px;
   padding-top:18px;border-top:1px solid #EDF0F7}
 .k-cx label{display:block;font-size:10.5px;font-weight:600;letter-spacing:.06em;

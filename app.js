@@ -659,7 +659,9 @@ function clearRepFilter(store) {
 function icpPill(f, { ask = false } = {}) {
   if (!f) return `<span class="dim tiny">-</span>`;
   if (f.unclassified) return `<span class="pill outline" title="No ICP segment on this contact yet, so there is nothing to score against.">not set</span>`;
-  return `<span class="pill icp ${f.band}">${f.band}</span>${ask ? icpAsk(f) : ""}`;
+  return `<span class="pill icp ${f.band}${f.borrowed ? " borrowed" : ""}"${
+    f.borrowed ? ` title="Segment borrowed from a colleague at the same company: ${esc(f.borrowed)}"` : ""
+  }>${f.band}</span>${ask ? icpAsk(f) : ""}`;
 }
 
 /* A band with no arithmetic behind it is a number somebody has to take on
@@ -683,6 +685,9 @@ function openIcpWhy(json, ev) {
        <div class="whyrow"><span>Role</span>
          <b>${f.roleFit}</b><i>counts for 30%</i></div>
        <div class="whysum">${f.companyFit} × 0.7 + ${f.roleFit} × 0.3 = ${f.score}</div>
+       ${f.borrowed ? `<div class="whyborrow">Nobody set a segment on this contact.
+         <b>${esc(f.borrowed)}</b> is borrowed from a colleague at the same company, because a
+         segment describes the employer rather than the person.</div>` : ""}
        <div class="actpop-f">80 and above is High. 50 to 79 is Medium. Below 50 is Low.
          Company fit comes from the ICP segment, role fit from the job title.</div>
      </div>`);
@@ -1078,11 +1083,14 @@ function contactRows() {
     const leadId = c.encounters[c.encounters.length - 1].leadId;
     const lead = LEADS.find(l => l.id === leadId) || {};
     const override = lead.relationship_pattern || null;
+    const borrowed = c.segment ? null : segmentFromColleagues(c.company, contacts, c.id);
     return {
       ...c, last, leadId,
       met: past.length,
       daysAgo: last ? Math.floor((Date.now() - new Date(last.at)) / 86400000) : null,
-      icp: icpFit({ segment: c.segment, title: c.title, company: c.company }),
+      segmentFrom: borrowed ? "colleague" : null,
+      icp: { ...icpFit({ segment: c.segment || borrowed, title: c.title, company: c.company }),
+             borrowed: borrowed || null },
       /* The rule's answer is kept even when a rep overrides it, so the row
          can say a human disagreed rather than silently replacing the fact. */
       ruled: c.verdict,
