@@ -200,7 +200,7 @@ Return {"verdict":"same"|"different"|"unsure","confidence":0-100,
     ].filter(Boolean).join(" · ");
 
     const signing = rep.name
-      ? `The email is from ${rep.name}, who logged the meeting.`
+      ? `The email is from ${rep.name} at Grain, who logged the meeting. Sign it off with their first name.`
       : "The email is from the rep who logged the meeting.";
     const cal = rep.calendar
       ? `Their booking link is ${rep.calendar}. Put it in the body, on its own line, exactly as written.`
@@ -235,10 +235,29 @@ Return JSON:
  "avoid": one thing NOT to do with this contact, drawn from what is above,
  "email": {
    "subject": under 60 characters, no colon-heavy marketing phrasing, reads like a person wrote it,
-   "body": "${first
-     ? "3 to 4 short sentences. Open by naming where you met and the specific thing THEY said. Say in one line what Grain does about exactly that problem, not in general. Then offer time and put the booking link on its own line."
-     : "3 to 5 short sentences. Open by referencing the specific thing THEY said, quoting their own words where you can. Make one concrete ask, and include the booking link on its own line if there is a reason to meet."}
-     No pleasantries about hoping they are well, no company boilerplate, no bullet points, no signature block. Plain text."
+   "body": "A real email, laid out like this and nothing else:
+
+     Hi <their first name>,
+     <blank line>
+     ${first
+       ? "One or two sentences: where you met and the specific thing THEY said, in their words."
+       : "One or two sentences referencing the specific thing THEY said, quoting them where you can."}
+     <blank line>
+     ${first
+       ? "One sentence on what Grain does about exactly that problem. Not what Grain does in general."
+       : "One sentence on what has changed or what you are offering now."}
+     <blank line>
+     One sentence asking for time.
+     <booking link on its own line, if there is one>
+     <blank line>
+     Best,
+     <the rep's first name>
+     Grain
+
+     Rules: no subject line inside the body. No hoping they are well, no
+     great to connect, no circling back, no excited to share. No bullet
+     points, no bold, no markdown. Short sentences. Write like one person
+     emailing another, not like marketing."
  }}`, { task: "relationshipArc" });
   }
 

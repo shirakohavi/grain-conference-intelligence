@@ -73,13 +73,24 @@ const DEMO = {
      instead. Every sentence below stands on its own and is true. */
   arc(c, rep = {}) {
     const canned = DEMO.arcs[c.name];
-    if (canned) return { ...canned, __demo: true };
 
     const firstE = c.encounters[0], last = c.encounters[c.encounters.length - 1];
     const name = c.name.split(" ")[0];
     const n = c.touches;
-    const link = rep.calendar ? `\n${rep.calendar}\n` : "\n";
+    const link = rep.calendar ? `\n${rep.calendar}` : "";
     const said = last.note ? `"${last.note}"` : "";
+    const signoff = `\n\nBest,\n${(rep.name || "").split(" ")[0] || "The Grain team"}\nGrain`;
+    const hi = `Hi ${name},\n\n`;
+
+    /* The six hand-written arcs carry the argument of the email, not its
+       envelope. Dressing them here keeps the greeting, the booking link and
+       the sign-off identical everywhere rather than repeated six times and
+       drifting. */
+    if (canned) return { ...canned, __demo: true, email: {
+      subject: canned.email.subject,
+      body: hi + canned.email.body.split("\n").filter(Boolean).join("\n\n") + link + signoff,
+    } };
+
 
     /* A first meeting has no arc to read. Its job is to introduce and book
        time while the conversation is still warm, which is a different email
@@ -99,10 +110,12 @@ const DEMO = {
         avoid: "Do not send a deck first. Nobody opens a deck from someone they met once.",
         email: {
           subject: `Good to meet you at ${firstE.confName}`,
-          body: `Good to meet you at ${firstE.confName}.`
-              + (last.note ? `\nYou mentioned ${said.toLowerCase()}, and that is the part I would like to pick up.` : "")
-              + `\nGrain takes the FX risk off platforms so their customers never carry it, which is usually the quickest thing to show rather than describe.`
-              + `\nAre you free for 20 minutes in the next couple of weeks?${link}`,
+          body: hi
+              + `Good to meet you at ${firstE.confName}.`
+              + (last.note ? ` You mentioned ${said}, and that is the part I would like to pick up.` : "")
+              + `\n\nGrain takes the FX risk off platforms so their customers never carry it. It is quicker to show than to describe.`
+              + `\n\nAre you free for 20 minutes in the next couple of weeks?${link}`
+              + signoff,
         },
       };
     }
@@ -134,9 +147,11 @@ const DEMO = {
       avoid: "Do not send a generic check-in. It is the message that ends these.",
       email: {
         subject: `Following up from ${last.confName}`,
-        body: `We spoke at ${last.confName} and I have been thinking about what you said.`
-            + (last.note ? `\nYou mentioned ${said.toLowerCase()}` : "")
-            + `\nIs there a good 20 minutes in the next two weeks to go through it properly?${link}`,
+        body: hi
+            + `We spoke at ${last.confName} and I have been thinking about what you said.`
+            + (last.note ? ` You mentioned ${said}.` : "")
+            + `\n\nIs there a good 20 minutes in the next two weeks to go through it properly?${link}`
+            + signoff,
       },
     };
   },
