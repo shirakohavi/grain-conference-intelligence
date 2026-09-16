@@ -850,7 +850,10 @@ VIEWS_CONTACTS = () => {
   if (CF.segment) rows = rows.filter(r => r.segment === CF.segment);
   if (CF.signal) rows = rows.filter(r => r.signal === CF.signal);
   if (CF.lead) rows = rows.filter(r => r.leadStatus === CF.lead);
-  if (CF.hubspot) rows = rows.filter(r => CF.hubspot === "review" ? r.needsReview : r.push === CF.hubspot);
+  /* The table shows two states now, pushed or needs a push, so the filter
+     offers the same two. "pushed" covers every row that goes on its own. */
+  if (CF.hubspot) rows = rows.filter(r => CF.hubspot === "review" ? r.needsReview
+    : CF.hubspot === "manual" ? r.push === "manual" : r.push !== "manual");
   if (CF.q) { const q = CF.q.toLowerCase();
     rows = rows.filter(r => (r.name + r.company + r.title + (r.email || "") + r.confs.join()).toLowerCase().includes(q)); }
 
@@ -900,7 +903,6 @@ VIEWS_CONTACTS = () => {
     <select class="filter-control" onchange="CF.hubspot=this.value;render()">
       <option value="">All HubSpot states</option>
       <option value="pushed"${CF.hubspot === "pushed" ? " selected" : ""}>Pushed</option>
-      <option value="queued"${CF.hubspot === "queued" ? " selected" : ""}>Queued</option>
       <option value="manual"${CF.hubspot === "manual" ? " selected" : ""}>Needs a push</option>
       ${reviewCount ? `<option value="review"${CF.hubspot === "review" ? " selected" : ""}>Identity unclear (${reviewCount})</option>` : ""}
     </select>
@@ -1125,11 +1127,9 @@ function drawContact(c) {
     <div class="card pad">
       <div class="spread">
         <h4 style="margin:0">HubSpot</h4>
-        ${S.pushed.has(c.id)
-          ? `<button class="btn ghost" onclick="pushOne('${c.id}')">Push again</button>`
-          : AUTO_PUSH.includes(lastIntent(c))
-            ? `<button class="btn auto" title="Goes on its own when saved. Press only to send it again now." onclick="pushOne('${c.id}')">Auto push</button>`
-            : `<button class="btn" onclick="pushOne('${c.id}')">Push now</button>`}
+        ${pushState(c) === "manual"
+          ? `<button class="btn" onclick="pushOne('${c.id}')">Push now</button>`
+          : `<button class="btn ghost" title="Hot and warm already went on their own. Press only to send it again." onclick="pushOne('${c.id}')">Push again</button>`}
       </div>
       <pre id="hs_out" class="mono" style="margin:10px 0 0;white-space:pre-wrap;color:var(--ink2)"></pre>
     </div>`);
@@ -1160,13 +1160,14 @@ function pushState(c) {
   return AUTO_PUSH.includes(lastIntent(c)) ? "auto" : "manual";
 }
 
-/* Two buttons, and the difference between them is the whole rule. Grey "Auto
-   push" means nobody has to do anything. The navy "Push" is the only one that
-   needs a human, and it only ever appears on a cold lead. */
+/* One button, and its absence is the whole rule. Hot and warm go on their own,
+   so they read as a finished state, not as something waiting to be clicked.
+   The navy "Push" needs a human, and it only ever appears on a cold lead. */
+const PUSHED_PILL = `<span class="pill" title="Hot and warm go to HubSpot on their own when saved">pushed</span>`;
 const PUSH_LABEL = {
-  pushed: `<span class="pill">pushed</span>`,
-  queued: `<button class="btn auto sm" title="Hot or warm, so it goes on its own. No relay URL set in Settings yet, so it is waiting.">Auto push</button>`,
-  auto:   `<button class="btn auto sm" title="Hot and warm are pushed on their own when saved">Auto push</button>`,
+  pushed: PUSHED_PILL,
+  queued: PUSHED_PILL,
+  auto:   PUSHED_PILL,
   manual: `<button class="btn sm">Push</button>`,
 };
 const pushBadge = c => PUSH_LABEL[pushState(c)];
