@@ -639,6 +639,59 @@ const ICP_BANDS = [
   { min: 0,  band: "Low" },
 ];
 
+/* ── ACCOUNTS: THE COMPANY BEHIND THE CONTACTS ─────────────────────────────
+   Reps sell to companies, not to individuals, and until now the tool had no
+   idea that four rows were one account. Grouping is cheap because
+   normCompany already folds monday, monday.com and Monday.com Ltd together.
+
+   This deliberately computes no verdict about the account. An earlier build
+   flagged single-threaded, no-treasury-contact and uncoordinated accounts in
+   prose on the card; it was cut because the card's job is to show who else is
+   here and get you to them in one click, and three paragraphs of judgement on
+   top of a screen that already carries a lead status is the clutter this tool
+   keeps trying to grow.
+
+   A single-contact company gets nothing. "One person, nothing else to tell
+   you" is noise on most rows.                                           */
+function accountFor(contact, allContacts) {
+  const key = normCompany(contact.company);
+  if (!key) return null;
+  const people = allContacts.filter(c => normCompany(c.company) === key);
+  if (people.length < 2) return null;
+  return {
+    key, name: contact.company,
+    segment: people.map(c => c.segment).find(Boolean) || contact.segment,
+    people,
+    events: [...new Set(people.flatMap(c => c.encounters.map(e => e.confId)))],
+    reps: [...new Set(people.flatMap(c => c.encounters.map(e => e.rep)).filter(Boolean))],
+    others: people.filter(c => c.id !== contact.id),
+  };
+}
+
+/* The same grouping, for the whole table. Biggest accounts first, because
+   that is where the cross-conference story actually is. */
+function groupByCompany(rows) {
+  const by = {};
+  rows.forEach(r => {
+    const k = normCompany(r.company) || "~none";
+    (by[k] = by[k] || { key: k, name: r.company || "No company", rows: [] }).rows.push(r);
+  });
+  const REL_RANK = { Active: 4, Developing: 3, New: 2, Dormant: 1 };
+  return Object.values(by).map(g => {
+    const best = g.rows.reduce((a, b) =>
+      (REL_RANK[b.relationship] || 0) > (REL_RANK[a.relationship] || 0) ? b : a, g.rows[0]);
+    return {
+      ...g,
+      best: best.relationship,
+      icp: g.rows.map(r => r.icp).sort((a, b) => b.score - a.score)[0],
+      met: g.rows.reduce((n, r) => n + r.met, 0),
+      events: [...new Set(g.rows.flatMap(r => r.confs.map(c => c.id)))].length,
+      repIds: [...new Set(g.rows.flatMap(r => r.repIds))],
+      last: g.rows.map(r => r.last).filter(Boolean).sort((a, b) => b.at.localeCompare(a.at))[0] || null,
+    };
+  }).sort((a, b) => b.rows.length - a.rows.length || a.name.localeCompare(b.name));
+}
+
 function icpFit({ segment, title, company } = {}) {
   const co = SEGMENT_FIT[segment];
   const companyFit = co == null ? 45 : co;   // unclassified is a middling guess

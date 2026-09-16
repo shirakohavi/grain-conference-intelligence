@@ -975,7 +975,12 @@ VIEWS_PLAN = () => {
      - a directory you can search and filter
      - the HubSpot handoff state
    Sortable columns, dropdown filters, click a row for the full history. */
-const CF = { q: "", conf: "", icp: "", rel: "", reps: [], nudge: "" };
+const CF = { q: "", conf: "", icp: "", rel: "", reps: [], nudge: "", group: false };
+/* Which company groups are open. Flat is the default: grouping is something
+   you turn on, not something you land in. */
+const COPEN = new Set();
+function toggleGroup(k) { COPEN.has(k) ? COPEN.delete(k) : COPEN.add(k); render(); }
+function setGrouped(on) { CF.group = on; if (on && !COPEN.size) COPEN.clear(); render(); }
 const CSORT = { key: "last", dir: -1 };
 
 /* One column, not two. An earlier build had a human "lead status" beside a
@@ -1066,7 +1071,7 @@ VIEWS_CONTACTS = () => {
       <h1>Contacts</h1>
       <div class="row" style="gap:8px">
         <a class="btn ghost" href="join.html" target="_blank" rel="noopener">Field mode</a>
-        <button class="btn" onclick="openAddPerson()">Add a person</button>
+        <button class="btn" onclick="openAddPerson()">Add a contact</button>
       </div>
     </div>
   </div>
@@ -1090,9 +1095,14 @@ VIEWS_CONTACTS = () => {
       <option value="">Everyone</option>
       <option value="1"${CF.nudge ? " selected" : ""}>Needs a nudge (${rows.filter(r => r.needsNudge).length})</option>
     </select>
-    <div class="filter-stat">${rows.length} people</div>
+    <div class="seg">
+      <button class="segbtn ${CF.group ? "" : "on"}" onclick="setGrouped(false)">Contacts</button>
+      <button class="segbtn ${CF.group ? "on" : ""}" onclick="setGrouped(true)">By company</button>
+    </div>
+    <div class="filter-stat">${rows.length} contacts</div>
   </div>
 
+  ${CF.group ? groupedTable(rows) : `
   <div class="card"><div class="pad tablewrap" style="padding-bottom:6px"><table class="fixed">
     <thead><tr>
       ${TH("name", "Name", "182px")}
@@ -1134,8 +1144,56 @@ VIEWS_CONTACTS = () => {
       </tr>`).join("")}
     </tbody></table>
     ${rows.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
-  </div></div>`;
+  </div></div>`}`;
 };
+
+/* The same rows, one level up. A company row rolls up its people and carries
+   the account flags; the flags are not repeated on each person underneath,
+   or "uncoordinated" would appear four times for one account. */
+function groupedTable(rows) {
+  const groups = groupByCompany(rows);
+  return `<div class="card"><div class="pad tablewrap" style="padding-bottom:6px"><table class="fixed">
+    <thead><tr>
+      <th style="width:250px">Company</th>
+      <th style="width:132px">Lead status</th>
+      <th style="width:92px">ICP fit</th>
+      <th style="width:46px">Met</th>
+      <th style="width:182px">Where and last seen</th>
+      <th style="width:104px">Spoke to them</th>
+    </tr></thead>
+    <tbody>${groups.map(g => `
+      <tr class="grp" onclick="toggleGroup('${g.key}')">
+        <td><div class="grpname">
+          <i class="caret ${COPEN.has(g.key) ? "open" : ""}"></i>${esc(g.name)}
+          <span class="pill outline">${g.rows.length}</span>
+        </div></td>
+        <td><span class="pill rel-${g.best}">${esc(g.best)}</span>
+          ${g.rows.length > 1 ? `<span class="tiny dim">best of ${g.rows.length}</span>` : ""}</td>
+        <td>${icpPill(g.icp)}</td>
+        <td><b class="mono">${g.met}</b></td>
+        <td class="tiny muted">${g.events} event${g.events === 1 ? "" : "s"}${
+          g.last ? ` · last ${fmtDMY(g.last.at)}` : ""}</td>
+        <td>${peopleCell(g.repIds, { empty: "-" })}</td>
+      </tr>
+      ${COPEN.has(g.key) ? g.rows.map(r => `
+        <tr class="kid" onclick="openContact('${r.id}')">
+          <td><div class="cell-name">${esc(r.name)}${r.needsNudge
+              ? `<span class="nudgedot" title="${esc(r.nudgeReason)}"></span>` : ""}</div>
+            <div class="tiny dim">${esc(r.title || "no role on file")}</div></td>
+          <td onclick="event.stopPropagation()">
+            <select class="status rel-${r.relationship} ${r.override ? "overridden" : ""}"
+              title="${esc(r.test)}" onchange="setRelationship('${r.leadId}', this.value)">
+              ${LEAD_STATUS.map(o => `<option${r.relationship === o ? " selected" : ""}>${o}</option>`).join("")}
+            </select></td>
+          <td>${icpPill(r.icp)}</td>
+          <td><b class="mono">${r.met}</b></td>
+          <td class="tiny muted">${r.last ? `${fmtDMY(r.last.at)} · ${r.daysAgo}d ago` : "not met yet"}</td>
+          <td>${peopleCell(r.repIds, { empty: "-" })}</td>
+        </tr>`).join("") : ""}`).join("")}
+    </tbody></table>
+    ${groups.length ? "" : `<div class="empty">Nothing matches those filters.</div>`}
+  </div></div>`;
+}
 VIEWS_CONTACTS.after = () => {
   const e = document.getElementById("ctq");
   if (e && CF.q) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
@@ -1176,7 +1234,7 @@ async function adjudicate(key) {
     <h4>Verdict ${badge(res)}</h4>
     <div class="row" style="margin-bottom:7px">
       <span class="pill" style="background:${same ? "var(--accent-soft)" : "#fdf0ee"};color:${same ? "var(--accent-ink)" : "var(--bad)"};font-size:12px">
-        ${same ? "Same person" : res.verdict === "different" ? "Two different people" : "Unsure"}</span>
+        ${same ? "Same contact" : res.verdict === "different" ? "Two different contacts" : "Unsure"}</span>
       <span class="tiny dim">${res.confidence}% confident</span></div>
     <p style="margin:0 0 7px;font-size:13px">${esc(res.reasoning)}</p>
     <div class="tiny muted"><b>What settled it:</b> ${esc(res.tell)}</div>
@@ -1236,7 +1294,7 @@ function openReconcile(r) {
     title: target.title || other.title || "",
     company: target.company || other.company || "",
     alts: { name: pair("name"), email: pair("email"), title: pair("title"), company: pair("company") },
-    heading: "Merged into one person",
+    heading: "Merged into one contact",
     lede: `${esc(other.confName)} on ${fmtDMY(other.at)} and ${esc(target.confName)} on ${fmtDMY(target.at)} `
         + `are now one record. Both meetings are kept either way. This is only about the details carried forward.`,
   };
@@ -1328,7 +1386,7 @@ function contactSummary(c) {
   if (companies.length > 1) bits.push(`Changed employer along the way: ${companies.join(" then ")}.`);
 
   const names = [...new Set(past.map(e => e.name).filter(Boolean))];
-  if (names.length > 1) bits.push(`Logged under ${names.join(" and ")}, treated as one person.`);
+  if (names.length > 1) bits.push(`Logged under ${names.join(" and ")}, treated as one contact.`);
 
   if (last.note) bits.push(`Last time: "${last.note}"`);
 
@@ -1370,7 +1428,7 @@ function identityBlock(c) {
     const k = r.key.replace(/\|/g, "_");
     return `<div class="card pad" style="border-color:var(--line)">
       <div class="spread" style="margin-bottom:6px">
-        <h4 style="margin:0">Might be the same person</h4>
+        <h4 style="margin:0">Might be the same contact</h4>
         <span class="pill warn">${r.score}/100</span></div>
       <div class="tiny muted" style="margin-bottom:9px">${esc(r.reasons.join(" · "))}</div>
       <div class="row" style="gap:14px;align-items:flex-start">
@@ -1379,12 +1437,57 @@ function identityBlock(c) {
       </div>
       <div id="aj_${k}"></div>
       <div class="row" style="margin-top:9px">
-        <button class="btn sm" onclick="decide('${r.key}','same')">Same person</button>
-        <button class="btn ghost sm" onclick="decide('${r.key}','different')">Two people</button>
+        <button class="btn sm" onclick="decide('${r.key}','same')">Same contact</button>
+        <button class="btn ghost sm" onclick="decide('${r.key}','different')">Two contacts</button>
       </div>
     </div>`;
   }).join("");
 }
+
+/* ── THE ACCOUNT ───────────────────────────────────────────────────────
+   Reps sell to companies. Everything above this is about one human, and a
+   contact who looks fine on their own can belong to an account nobody is
+   holding. One card, and only when there is someone else to show: a company
+   where we have met exactly one person gets nothing, because "one person,
+   nothing else to tell you" is noise on most rows.
+
+   The card states facts and offers a door. It draws no conclusions about the
+   account, deliberately: the lead status beside every name is already the
+   judgement on this screen, and stacking more on top is the clutter this
+   tool keeps trying to grow.
+
+   The tiles carry a name and a role and nothing else. Their status is on
+   their own card, one click away, and repeating it here would be three more
+   competing labels on a screen that already has one. */
+function accountBlock(c) {
+  const { contacts } = identities();
+  const a = accountFor(c, contacts);
+  if (!a) return "";
+  return `<div class="card pad acct">
+    <div class="acctline">
+      <h4>${esc(a.name)}</h4>
+      ${a.segment ? `<span class="pill ${TAG_TONE(a.segment)}">${esc(a.segment)}</span>` : ""}
+      <span class="acctstat">${a.people.length} people · ${a.events.length} event${
+        a.events.length === 1 ? "" : "s"} · ${a.reps.length} rep${a.reps.length === 1 ? "" : "s"}</span>
+    </div>
+
+    <div class="acctppl">
+      ${a.others.map(o => `
+        <button class="pcard" onclick="openContact('${o.id}')">
+          ${/* The contact's own initials, not the rep who logged them. The
+               tile is about the person at the company. */""}
+          ${avatar({ id: o.id, initials: initialsOf(o.name), name: o.name })}
+          <span><b>${esc(o.name)}</b><span class="tiny dim">${esc(o.title || "no role on file")}</span></span>
+        </button>`).join("")}
+    </div>
+
+  </div>`;
+}
+
+/* A contact is not a team member, so they have no roster initials. Build
+   them from the name rather than showing an empty circle. */
+const initialsOf = n => String(n || "").trim().split(/\s+/).slice(0, 2)
+  .map(w => w[0] || "").join("").toUpperCase() || "?";
 
 /* ── THE ARC ───────────────────────────────────────────────────────────
    The verdict above is a rule and is always on screen. This is the part a
@@ -1480,6 +1583,8 @@ function drawContact(c) {
     <div class="summary">${esc(contactSummary(c))}</div>
 
     ${identityBlock(c)}
+
+    ${accountBlock(c)}
 
     ${arcBlock(c)}
 
@@ -2043,7 +2148,8 @@ const SEGMENTS = ["PSP", "Travel", "Marketplace", "BNPL", "Payroll", "Stablecoin
 
 function drawAddPerson() {
   const a = S.ap; if (!a) return;
-  const step = n => `<span class="pill ${a.stage === n ? "blue" : ""}">${n}</span>`;
+  const step = n => `<span class="pill ${a.stage === n || (n === "details" && a.stage === "confirm")
+    ? "blue" : ""}">${n}</span>`;
 
   let body = "";
 
@@ -2068,7 +2174,7 @@ function drawAddPerson() {
   if (a.stage === "matched") {
     body = `
       <div class="alert"><b>We have met someone with this email.</b>
-        Confirm it is the same person before this gets logged against their history.</div>
+        Confirm it is the same contact before this gets logged against their history.</div>
       ${a.matches.map(m => {
         const lead = m.lead;
         // allEncounters() is the mapped list, it carries confName. The raw
@@ -2089,14 +2195,14 @@ function drawAddPerson() {
               <div class="muted" style="margin-top:2px">"${esc(e.note)}"</div></div>`).join("")}`
             : `<div class="tiny dim">No encounters logged yet.</div>`}
           <div class="row" style="margin-top:12px">
-            <button class="btn" onclick="sameAs('${lead.id}')">Yes, same person</button>
+            <button class="btn" onclick="sameAs('${lead.id}')">Yes, same contact</button>
             <button class="btn ghost" onclick="S.ap.stage='form';S.ap.leadId=null;drawAddPerson()">No, someone new</button>
           </div>
         </div>`; }).join("")}`;
   }
 
   /* ── 3. a genuinely new person ───────────────────────────────────── */
-  if (a.stage === "form") {
+  if (a.stage === "form" || a.stage === "details") {
     const f = (k, label, ph = "") =>
       `<label>${label}</label><input class="inp" placeholder="${ph}" value="${esc(a.fields[k])}"
         oninput="S.ap.fields['${k}']=this.value">`;
@@ -2118,6 +2224,36 @@ function drawAddPerson() {
       <div class="row">
         <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()">Next, where did you meet?</button>
 
+      </div>`;
+  }
+
+  /* ── 3b. a known contact: check what we hold before logging anything ── */
+  if (a.stage === "confirm") {
+    const rec = a.onRecord || {};
+    const f = (k, label, recVal) => {
+      const differs = recVal && a.fields[k] && recVal !== a.fields[k];
+      return `<label>${label}</label>
+        <input class="inp" value="${esc(a.fields[k])}" oninput="S.ap.fields['${k}']=this.value">
+        ${differs ? `<div class="tiny dim" style="margin:3px 0 0">On record: ${esc(recVal)}
+          <button class="linkbtn" onclick="S.ap.fields['${k}']=${JSON.stringify(recVal).replace(/"/g, "&quot;")};drawAddPerson()">use that</button></div>` : ""}`;
+    };
+    body = `
+      <div class="alert good"><b>${esc(a.known.full_name)} is already on record.</b>
+        Check what we hold before the meeting goes on their history.</div>
+      <div class="kv">
+        ${f("name", "Full name", rec.name)}
+        ${f("company", "Company", rec.company)}
+        ${f("title", "Role", rec.title)}
+        <label>Work email</label>
+        <input class="inp" value="${esc(a.email)}" oninput="S.ap.email=this.value">
+        <label>Segment</label>
+        <select class="inp" onchange="S.ap.fields.segment=this.value">
+          ${SEGMENTS.map(x => `<option${a.fields.segment === x ? " selected" : ""}>${x}</option>`).join("")}
+        </select>
+      </div>
+      <p class="tiny dim" style="margin:-4px 0 4px">Edits here update the contact, not just this meeting.</p>
+      <div class="row">
+        <button class="btn" onclick="S.ap.stage='encounter';drawAddPerson()">Continue</button>
       </div>`;
   }
 
@@ -2150,9 +2286,9 @@ function drawAddPerson() {
   /* Coming from an existing contact there is no duplicate check to run and
      no identity to establish, so the stepper would be showing three stages
      that will never happen. */
-  drawer(`<div class="spread"><h3 style="margin:0">${a.backTo ? "Log a meeting" : "Add a person"}</h3>
+  drawer(`<div class="spread"><h3 style="margin:0">${a.backTo ? "Log a meeting" : "Add a contact"}</h3>
       <button class="x" onclick="S.ap=null;closeDrawer()">×</button></div>
-    ${a.backTo ? "" : `<div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("form")}${step("encounter")}</div>`}`,
+    ${a.backTo ? "" : `<div class="row" style="gap:5px;margin-top:8px">${step("email")}${step("matched")}${step("details")}${step("encounter")}</div>`}`,
     body);
 }
 
@@ -2170,10 +2306,31 @@ async function checkEmail() {
   } catch (e) { S.ap.checking = false; drawAddPerson(); toast("Search failed: " + e.message, true); }
 }
 
+/* Confirming the match used to drop the rep straight into a note box, so
+   they never saw what the tool already held on this person. That is where a
+   stale job title lives forever: they met a VP, the record still says
+   Manager, and nobody was ever shown the difference.
+
+   So the match lands on the details, prefilled from the record and from what
+   the rep just typed, with anything that disagrees called out. Continue is
+   one tap if it all looks right. */
 function sameAs(leadId) {
+  const lead = (S.ap.matches.find(m => m.lead.id === leadId) || {}).lead;
   S.ap.leadId = leadId;
-  S.ap.known = (S.ap.matches.find(m => m.lead.id === leadId) || {}).lead;
-  S.ap.stage = "encounter";
+  S.ap.known = lead;
+  S.ap.fields = {
+    name: lead.full_name || S.ap.fields.name || "",
+    company: lead.company || S.ap.fields.company || "",
+    title: lead.title || S.ap.fields.title || "",
+    phone: lead.phone || "",
+    segment: lead.icp_segment || S.ap.fields.segment || "PSP",
+  };
+  S.ap.onRecord = {
+    name: lead.full_name || "", company: lead.company || "",
+    title: lead.title || "", email: lead.work_email || "",
+  };
+  S.ap.email = S.ap.email || lead.work_email || "";
+  S.ap.stage = "confirm";
   drawAddPerson();
 }
 
@@ -2185,6 +2342,17 @@ async function savePerson() {
      defaulted to whoever happens to be logged in on this browser. */
   if (!teamById(a.repId)) return toast("Pick who logged this first.", true);
   try {
+    /* A known contact whose details were corrected on the way in. Write them
+       back, otherwise the correction only ever reaches this one encounter. */
+    if (a.leadId && a.onRecord) {
+      const patch = {};
+      if (a.fields.name && a.fields.name !== a.onRecord.name) patch.full_name = a.fields.name;
+      if (a.fields.company !== a.onRecord.company) patch.company = a.fields.company || null;
+      if (a.fields.title !== a.onRecord.title) patch.title = a.fields.title || null;
+      if (a.email && a.email !== a.onRecord.email) patch.work_email = a.email;
+      if (a.fields.segment) patch.icp_segment = a.fields.segment;
+      if (Object.keys(patch).length) await DB.updateLead(a.leadId, patch);
+    }
     let leadId = a.leadId;
     if (!leadId) {
       const lead = await DB.upsertLead({
@@ -2202,9 +2370,12 @@ async function savePerson() {
       rep: (teamById(a.repId) || {}).name || REP_NAME(),
       met_at: new Date().toISOString(), intent: a.intent,
       note: a.note, raw_note: a.note,
-      name_as_given: a.known ? a.known.full_name : a.fields.name,
-      company_as_given: a.known ? a.known.company : a.fields.company,
-      title_as_given: a.known ? a.known.title : a.fields.title,
+      /* As recorded at the time, which is what makes a job change visible
+         later. These are the fields as they stand after the confirm step,
+         not whatever the lead row said before the rep corrected it. */
+      name_as_given: a.fields.name || (a.known && a.known.full_name) || null,
+      company_as_given: a.fields.company || (a.known && a.known.company) || null,
+      title_as_given: a.fields.title || (a.known && a.known.title) || null,
       email_as_given: a.email || null,
     });
     const wasKnown = !!a.leadId, backTo = a.backTo;
