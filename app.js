@@ -132,15 +132,11 @@ const IC = {
 const icon = k => `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor"
   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
 
-/* Settings is deliberately not in here. The brief requires API keys to be
-   configurable rather than hardcoded, so the screen exists and works, but a
-   rep opening this on a conference floor has no reason to see a
-   configuration page. It lives at #settings, which is where whoever deploys
-   the tool goes once, and the README says so. */
 const NAVS = [
   ["conferences", "Conferences"],
   ["plan",        "Plan the year"],
   ["contacts",    "Contacts"],
+  ["settings",    "Settings"],
 ];
 
 function render() {
@@ -157,17 +153,7 @@ function render() {
   document.getElementById("main").innerHTML = VIEWS[S.view]();
   if (VIEWS[S.view].after) VIEWS[S.view].after();
 }
-function go(v) {
-  S.view = v; S.sel = null;
-  /* Leaving settings should drop the hash too, or a reload lands back there. */
-  if (v !== "settings" && location.hash === "#settings") history.replaceState(null, "", location.pathname + location.search);
-  render(); window.scrollTo(0, 0);
-}
-/* The only way in to settings: the address bar. */
-function openSettingsFromHash() {
-  if (location.hash === "#settings" && S.view !== "settings") { S.view = "settings"; S.sel = null; render(); }
-}
-window.addEventListener("hashchange", openSettingsFromHash);
+function go(v) { S.view = v; S.sel = null; render(); window.scrollTo(0, 0); }
 
 /* ══════════════════════════════════════════════════════════════════════
    VIEW 1, CONFERENCES.  Decide what's worth attending.
@@ -1794,79 +1780,63 @@ async function autoPush(leadId) {
    ══════════════════════════════════════════════════════════════════════ */
 VIEWS_SETTINGS = () => {
   const c = AI.cfg();
+  const route = AI.mode() === "proxy" ? "n8n" : AI.mode() === "key" ? "browser key" : "demo";
   return `
   <div class="head"><h1>Settings</h1>
-    <p>Keys live in this browser only.</p></div>
+    <p>Keys live in this browser only. Current AI route: <b>${route}</b>.</p></div>
 
   <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="card pad">
-      <h3>Automation</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px">AI calls go through n8n, so the API key stays in n8n's
-        credential store rather than the browser.</p>
+      <h3>n8n</h3>
       <div class="kv">
-        <label>n8n base URL</label>
-        <input class="inp" placeholder="https://admin-n8n.optimally-ai.com"
+        <label>Base URL</label>
+        <input class="inp" placeholder="https://your-n8n.example.com"
           value="${esc(localStorage.getItem("n8n_base") || "")}"
           oninput="localStorage.setItem('n8n_base',this.value.replace(/\\/+$/,''))">
       </div>
       <div class="row" style="margin-top:11px">
-        <button class="btn" onclick="testProxy()">Test the webhook</button>
+        <button class="btn" onclick="testProxy()">Test</button>
         <span id="proxytest" class="tiny"></span>
-      </div>
-      <div class="alert ${AI.viaProxy() ? "good" : ""}" style="margin-top:12px">
-        <b>Route: ${AI.mode()}.</b>
-        ${AI.mode() === "proxy" ? "Through n8n. Visitors need no key."
-          : AI.mode() === "key" ? "Straight from this browser, using the key below."
-          : "None set. AI features return pre-written responses badged <i>demo</i>."}
-      </div>
-    </div>
-
-    <div class="card pad">
-      <h3>AI provider</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px">Fallback for when n8n is unreachable.</p>
-      <div class="kv" style="margin-bottom:12px">
-        <label>Provider</label>
-        <select class="inp" onchange="localStorage.setItem('ai_provider',this.value);localStorage.removeItem('ai_model');render()">
-          <option value="anthropic"${c.provider === "anthropic" ? " selected" : ""}>Anthropic (Claude)</option>
-          <option value="openai"${c.provider === "openai" ? " selected" : ""}>OpenAI</option>
-        </select>
-        <label>API key</label>
-        <input class="inp" type="password" value="${esc(c.key)}" placeholder="${c.provider === "openai" ? "sk-…" : "sk-ant-…"}"
-          oninput="localStorage.setItem('ai_key',this.value)">
-        <label>Model</label>
-        <input class="inp" value="${esc(c.model)}" oninput="localStorage.setItem('ai_model',this.value)">
-      </div>
-      <div class="row">
-        <button class="btn" onclick="testKey()">Test the key</button>
-        <button class="btn ghost" onclick="localStorage.removeItem('ai_key');S.aiCache={};save();render()">Clear key</button>
-        <button class="btn ghost" onclick="S.aiCache={};save();alert('AI response cache cleared.')">Clear cache</button>
-      </div>
-      <div id="keytest" class="tiny" style="margin-top:9px"></div>
-      <div class="alert ${AI.hasKey() ? "good" : ""}" style="margin-top:12px">
-        ${AI.hasKey() ? `<b>Live.</b> Every AI feature calls the provider.`
-          : `<b>Demo.</b> No key set. AI features return pre-written responses badged <i>demo response</i>, so nothing dead-ends.`}
       </div>
     </div>
 
     <div class="card pad">
       <h3>HubSpot</h3>
-      <p class="tiny muted" style="margin:-4px 0 10px">HubSpot blocks browser calls, and a token in client-side
-        JavaScript is readable by anyone. The payload goes to a relay you control instead. With no relay set,
-        the tool shows you the payload.</p>
       <div class="kv">
         <label>Relay URL</label>
-        <input class="inp" placeholder="https://hook.eu2.make.com/…" value="${esc(localStorage.getItem("hubspot_relay") || "")}"
+        <input class="inp" placeholder="https://your-n8n.example.com/webhook/grain-hubspot-push"
+          value="${esc(localStorage.getItem("hubspot_relay") || "")}"
           oninput="localStorage.setItem('hubspot_relay',this.value)">
       </div>
-      <div class="alert" style="margin-top:11px"><b>Custom properties expected:</b>
-        <span class="mono">grain_conference_touches</span>, <span class="mono">grain_relationship</span>,
-        <span class="mono">grain_icp_fit</span>, <span class="mono">grain_lead_status</span>,
-        <span class="mono">grain_first_met_at</span>, <span class="mono">grain_last_met_at</span></div>
+    </div>
 
-      <h3 style="margin-top:20px">Data</h3>
+    <div class="card pad">
+      <h3>AI key</h3>
+      <div class="kv">
+        <label>Provider</label>
+        <select class="inp" onchange="localStorage.setItem('ai_provider',this.value);localStorage.removeItem('ai_model');render()">
+          <option value="anthropic"${c.provider === "anthropic" ? " selected" : ""}>Anthropic (Claude)</option>
+          <option value="openai"${c.provider === "openai" ? " selected" : ""}>OpenAI</option>
+        </select>
+        <label>Key</label>
+        <input class="inp" type="password" value="${esc(c.key)}" placeholder="${c.provider === "openai" ? "sk-…" : "sk-ant-…"}"
+          oninput="localStorage.setItem('ai_key',this.value)">
+        <label>Model</label>
+        <input class="inp" value="${esc(c.model)}" oninput="localStorage.setItem('ai_model',this.value)">
+      </div>
+      <div class="row" style="margin-top:11px">
+        <button class="btn" onclick="testKey()">Test</button>
+        <button class="btn ghost" onclick="localStorage.removeItem('ai_key');S.aiCache={};save();render()">Clear</button>
+        <span id="keytest" class="tiny"></span>
+      </div>
+    </div>
+
+    <div class="card pad">
+      <h3>Data</h3>
       <div class="row">
-        <button class="btn ghost sm" onclick="exportAll()">Export everything as JSON</button>
-        <button class="btn ghost sm" onclick="if(confirm('Reset all captured leads, decisions and weights?')){localStorage.clear();location.reload()}">Reset the demo</button>
+        <button class="btn ghost sm" onclick="exportAll()">Export JSON</button>
+        <button class="btn ghost sm" onclick="S.aiCache={};save();alert('AI response cache cleared.')">Clear cache</button>
+        <button class="btn ghost sm" onclick="if(confirm('Reset all captured leads, decisions and weights?')){localStorage.clear();location.reload()}">Reset</button>
       </div>
       <div class="tiny dim" style="margin-top:8px">${S.extra.length} leads captured in this browser ·
         ${Object.keys(S.decisions).length} match decisions · ${Object.keys(S.aiCache).length} cached AI responses</div>
@@ -1990,7 +1960,6 @@ function fatal(msg) {
     // Debounced: a burst of inserts from an n8n flow should repaint once.
     let t;
     DB.onChange(() => { clearTimeout(t); t = setTimeout(() => reload().catch(() => {}), 400); });
-    openSettingsFromHash();
   } catch (e) { fatal(e.message); }
 })();
 
