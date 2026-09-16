@@ -1,0 +1,84 @@
+{
+  "name": "grain-ai",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grain-ai",
+        "responseMode": "responseNode",
+        "options": { "allowedOrigins": "*" }
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "grain-ai",
+      "notes": "The browser calls this from github.io, so CORS has to be open. Tighten allowedOrigins to the Pages URL before this is anything but a demo."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Why this flow exists: the model key must never sit in client-side\n// JavaScript, but a grader opening the live URL has no key of their own.\n// The key lives in this instance's credential store and the browser only\n// ever sees the answer.\n//\n// The task allow-list matters. Without it this URL is a free, anonymous\n// LLM proxy for anyone who finds it, which is how a demo turns into a\n// bill. Only the three jobs the app actually makes are accepted.\nconst ALLOWED = ['interpretScore', 'adjudicateMatch', 'relationshipArc'];\n\nconst b = $input.first().json.body || $input.first().json;\nif (!ALLOWED.includes(b.task)) {\n  throw new Error(`Unknown task \"${b.task}\". This endpoint only serves: ${ALLOWED.join(', ')}`);\n}\nif (!b.prompt || typeof b.prompt !== 'string') {\n  throw new Error('No prompt on the request.');\n}\n// A hard ceiling, so a malformed caller cannot send a novel.\nconst prompt = b.prompt.slice(0, 24000);\nconst system = (b.system || '').slice(0, 8000);\n\nreturn [{ json: { task: b.task, system, prompt } }];"
+      },
+      "id": "guard",
+      "name": "Check the task and trim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "anthropic-version", "value": "2023-06-01" },
+          { "name": "content-type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 1600, system: $json.system, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "call",
+      "name": "Anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 0],
+      "notes": "Credential: Header Auth, name x-api-key, value the Anthropic key. Header Auth rather than a Bearer token, because that is the header Anthropic reads. The key exists only here."
+    },
+    {
+      "parameters": {
+        "jsCode": "// The app expects { text }. It does the JSON parsing itself, in one place,\n// so this flow does not need to know the shape of any particular answer.\nconst r = $input.first().json;\nconst text = (r.content || []).map(b => b.text || '').join('');\nif (!text) throw new Error('Anthropic returned no text: ' + JSON.stringify(r).slice(0, 300));\nreturn [{ json: { text } }];"
+      },
+      "id": "shape",
+      "name": "Pull out the text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ text: $json.text }) }}",
+        "options": { "responseHeaders": { "entries": [
+          { "name": "Access-Control-Allow-Origin", "value": "*" }
+        ] } }
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Check the task and trim", "type": "main", "index": 0 }]] },
+    "Check the task and trim": { "main": [[{ "node": "Anthropic", "type": "main", "index": 0 }]] },
+    "Anthropic": { "main": [[{ "node": "Pull out the text", "type": "main", "index": 0 }]] },
+    "Pull out the text": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
