@@ -1,230 +1,276 @@
-# Video walkthrough — running order
+# Video script
 
-**Target: 7 minutes.** They asked for 5–10. Under 5 reads as thin; over 10 and they stop watching.
-Record in one take if you can — a slightly rough single take reads as confident. Screen + voice,
-no face needed.
+Target 8 minutes. The brief asks for five things and this covers them in
+order: a live demo from a salesperson's point of view, the scoring logic and
+why, cross-conference tracking including the edge cases, how AI was used to
+build it, and what comes next.
 
-Before you hit record: open the tool, go to **Settings**, paste your API key, press **Test the
-key**. Then click through Signal Miner → Conferences once so the ★ signals are live. If the key
-is in, the badges say `live` instead of `demo response` — worth it.
-
----
-
-## 0:00 — Open with the problem, not the tool (25 sec)
-
-> "Grain's sales team is deciding which conferences to attend using spreadsheets, Slack threads
-> and individual notebooks. The decision is fragmented across four different moments in a rep's
-> year, so I built one tool around those four moments: decide what's worth attending, plan who
-> covers what, capture people on the floor, and recognise relationships that build across events.
-> One principle runs through all of it, and I'll come back to it: **rules where the answer has to
-> be reproducible, AI where the job actually needs judgement.**"
-
-Don't tour the navigation. Go straight to a screen.
+Everything below is real. Every name, number and line of output is what the
+tool actually shows, so nothing has to be staged.
 
 ---
 
-## 0:25 — Decide (90 sec) · *Conferences tab*
+## Before you hit record
 
-Point at the top of the list.
-
-> "51 real events, scored for Grain's ICP and tiered. The interesting thing isn't the ranking —
-> it's this."
-
-Open **Seamless Middle East** (free, Dubai, tier A) and put it next to **Money20/20 USA** (€3,670).
-
-> "A free Dubai expo out-ranks the industry flagship. That's not a bug, it's the cost model.
-> A rep holds about twenty real conversations a day on a show floor — above that, extra
-> attendees stop being reachable. So efficiency is cost per *reachable* ICP contact, capped at
-> twenty a day, not cost per attendee. Money20/20 has 11,500 people but you can only meet the
-> same number as anywhere else. Size stops being rewarded for its own sake."
-
-Now grab the **weight sliders** and drag *Decision-maker seniority* up.
-
-> "And the weighting is the sales lead's call, not the tool's. This re-ranks everything live —
-> if they care more about seniority than cost, Sibos climbs and the cheap expos fall. I didn't
-> want to hand them a number they couldn't argue with."
-
-Open the drawer on any event, point at the five bars and the arithmetic line underneath.
-
-> "Every score decomposes. Five inputs, the weights, the actual cost arithmetic. A sales lead can
-> audit the whole thing — which is the point, because a score they can't reproduce is a score
-> they won't trust."
-
-Then point at the **AI read** panel.
-
-> "The AI doesn't compute the score. It's given the five numbers and asked for the argument —
-> who to hunt on that floor, and what the score structurally can't see. That split is deliberate."
+1. Settings, check the AI route says **n8n**. If it says demo, the model is
+   not being called and half the video is a lie.
+2. Conferences, clear every filter. Upcoming, all regions, all tiers.
+3. Have `join.html` open in a second tab, already through setup, sitting on
+   the empty capture form.
+4. Have the HubSpot contacts list open in a third tab.
+5. Screen at 1440 wide or narrower so the tables are readable on playback.
 
 ---
 
-## 2:00 — Plan (60 sec) · *Plan the year tab*
+## 0:00  What this is (30 sec)
 
-> "Same data, planner's view. Two things a list can't show you."
-
-Point at the alerts.
-
-> "First — Middle East and Asia-Pacific have A-tier events coming and nothing booked. Second —
-> these clash. Seamless Saudi and Singapore FinTech Festival overlap in November and both are
-> worth attending, so that's a real decision: two reps, or pick one."
-
-Scroll to **Trips you could combine**.
-
-> "And this is the one I'd defend hardest. Riyadh to Dubai — two A-tier events eight days apart
-> in the same region. That's one flight from Tel Aviv instead of two. It's pure date and
-> geography arithmetic, no AI anywhere near it, and it's the feature that saves actual money."
-
----
-
-## 3:00 — Capture (60 sec) · *Field mode tab*
-
-> "This is the screen I thought about hardest, because it's the one used standing up, on a phone,
-> while someone is still talking to you."
-
-Click **A hot lead** to fill the box. Read a few words of it out loud so they hear how messy it is.
-
-> "One box. No form. You type what you'd say to a colleague and you keep talking."
-
-Hit **Save lead**.
-
-> "Then it structures. Name, company, title, the signals that say ICP fit — and this bit matters —
-> **what to grab before they walk away**. Not a list of empty fields; the two things actually
-> worth chasing. And the raw note saves locally first, so conference wifi doesn't have to work."
-
-Now click **Someone we've met before** and save it.
-
-> "And when the person is already in the book, it tells you at the moment of capture, not later."
-
----
-
-## 4:00 — Recognise (150 sec) · *Contacts tab* — **spend the most time here**
-
-They flagged cross-conference intelligence as a scoring criterion. This is the section that wins it.
-
-> "Rules generate candidate matches and a confidence score. Above 85 they merge silently, below
-> 50 they stay apart. In between goes here, to a review queue — and this is where the whole
-> design argument lives."
-
-Point at the **Danielle Roux** pair and the **David Cohen** pair.
-
-> "These two score fifty and fifty-six. Almost identical. Same name, different company, in both
-> cases. And the right answers are opposite: Danielle Roux changed jobs, she's one person.
-> The two David Cohens are two different people who happen to share a common name.
-> **No string comparison can separate those.**"
-
-Click **Ask AI to decide** on each.
-
-> "It reads what the reps actually wrote. For Danielle — Alon's note says she moved to Checkout
-> in August and that she raised the Copenhagen conversation herself. For David — one's in fraud
-> at Riskified in London, the other's in treasury at Payoneer in New York three days later, and
-> the second rep literally wrote 'different david' in the note."
+> "Grain sells cross-currency FX hedging to PSPs, marketplaces, travel
+> platforms and treasury teams. Conferences are where that pipeline starts,
+> and right now the decisions around them live in a spreadsheet, a Slack
+> thread and somebody's notebook.
 >
-> "It's told to be conservative, because the errors aren't symmetrical. Merging two people
-> corrupts the CRM and has a rep greet a stranger by the wrong history. Splitting one person is
-> annoying and recoverable. And the human always has the override — those two buttons never go away."
+> This is one tool for the four decisions a rep actually makes: which
+> conferences are worth going to, who covers what, capturing people on the
+> floor, and noticing when a relationship is going somewhere."
 
-Mention the other cases briefly:
-
-> "The rules also handle nicknames — Bea to Beatrice — transliteration, where two reps spelled
-> the same Arabic name differently, and the case where one rep only got a phone number."
-
-Now open **Daniel Mercer**.
-
-> "Three encounters over seven months. The *pattern* — warming — is arithmetic on the intent
-> sequence; I didn't want a model deciding that. What the AI does is read three sets of scrappy
-> field notes and say what actually moved: in February he told us FX was handled internally,
-> by June he'd been promoted and owned FX himself. And then the nudge — specific, with the hook
-> from the notes, and a date."
-
-Then open **Marco Ferrari**.
-
-> "And this is the one I'm proudest of. Three friendly conversations, two decks sent, no replies,
-> and in July he mentioned they'd renewed with their incumbent in April. The verdict is
-> **politely disengage**. The brief asked for the tool to tell a rep whether this is a warming
-> relationship or a polite tire-kicker who's been listening for a year — a tool that only ever
-> says 'follow up!' isn't answering that question. It has to be willing to say stop."
-
-Scroll to **Push to HubSpot**, click it, let the payload show.
-
-> "And it pushes to HubSpot with the arc attached — touch count, pattern, first and last event —
-> so the intelligence survives outside this tool. A browser can't call HubSpot directly, no CORS,
-> and a private-app token in client-side JavaScript is readable by anyone who opens the page. So
-> it builds the exact payload and posts it to a relay you configure. With no relay set it shows
-> you the payload rather than pretending to sync."
+Show the sidebar. Three working screens and a settings page.
 
 ---
 
-## 6:30 — The feature they didn't ask for (45 sec) · *Signal miner tab*
+## 0:30  The demo, as a salesperson (2 min)
 
-> "One thing that isn't in the brief. The brief says the team should be able to find conferences
-> they don't already know about. The obvious answer is to search the web. But the team already
-> knows — it's sitting in Slack threads and meeting summaries nobody re-reads."
+### Conferences
 
-Click **All four**, then **Find the conferences**.
+> "Eighty-seven events. Sorted by fit, not by date, because the question is
+> what to attend, not what is next."
 
-> "Four real-shaped internal texts. It pulls out every event mentioned, who raised it, and the
-> thing that actually matters — **whether a customer raised it or just us**. Airwallex is sending
-> twelve people to Singapore FinTech Festival. Mirakl says the marketplace crowd goes to Shoptalk,
-> not to fintech events, which might be why the marketplace pipeline is thin. Paymob asked why we
-> skipped Seamless. That's the gap between what the team already knows and what the plan reflects."
+Point at the top row.
 
-Switch to **Conferences** and point at a ★.
-
-> "And it loops back — anything it finds shows here, where the decision gets made, instead of
-> scrolling away in a thread. Today it reads a paste box. The same function takes its input from
-> a Slack MCP connector without changing — the parsing was the hard part."
-
----
-
-## 7:15 — How I built it, and what's next (60 sec)
-
-**Be specific and honest here — they're hiring for exactly this.** Say what actually happened,
-in your own words. The shape that works:
-
-> "I built this with Claude as a pair. Where it helped most: the boring correctness — the
-> Jaro-Winkler matching, the union-find that groups encounters into people, getting 51 real
-> conferences with real dates in. Where I had to push back: the first instinct was to wrap a model
-> around everything, including the scoring. I didn't want that. A score a sales lead can't
-> reproduce is a score they won't trust, so I pulled the arithmetic back into plain code and kept
-> AI for the six jobs that genuinely need judgement. That's in one file with a comment on each one
-> saying why a rule couldn't do it."
+> "Juniper Travel Technology Summit. Five hundred people in Palma, a five
+> hundred euro ticket, and it scores ninety-six. Money20/20 USA has eleven
+> thousand people, a three and a half thousand euro ticket, and it scores
+> eighty-three.
 >
-> "The other thing I'd call out: it works with no API key. Every AI feature falls back to a
-> pre-written response of the same shape, badged 'demo'. I assumed whoever opened this link
-> wouldn't have pasted a key, and a tool that dead-ends on a missing key doesn't get evaluated."
+> The tool prefers the small one. Open it and it says why."
 
-Then next steps — keep it to two, not five:
+Open the drawer. Point at the cost line.
 
-> "With another week: first, replace the Signal Miner's paste box with a real Slack connector —
-> the parsing is done, the input is a swap, and it's the only feature that gets better the more
-> the team uses Slack normally. Second, close the loop with HubSpot outcomes. ICP density is a
-> human estimate today. Once leads carry deal outcomes, it becomes measured — cost per *closed*
-> contact instead of per conversation — and the score stops being an opinion."
+> "Twenty-eight euros per qualified conversation against seventy-four. A
+> travel payments event where most of the room is a buyer beats a giant
+> fintech show where most of the room is not."
+
+### Plan the year
+
+> "Same data, asked a different question. Where are we under-invested, which
+> events cluster into one trip, and who is covering what."
+
+Point at a cluster and at a rep with no events.
+
+### Field mode
+
+Switch to the second tab.
+
+> "This is a different page. A rep opens it on a tablet at a stand, hands it
+> to the person in front of them, and it never shows the pipeline to a
+> prospect."
+
+Type an email, a name, a company, press Continue.
+
+> "It writes the contact and the meeting before anyone types a note, because
+> the risk at a booth is a half-filled form, not a missing note."
+
+Tap a segment, type a note, pick Hot.
+
+> "Segment first, one tap, because it decides most of the ICP fit. The note
+> saves as you type. There is no save button."
+
+Switch back to the main app, Contacts.
+
+> "And there they are, with the meeting, the rep who logged it, and the
+> event. That also went to HubSpot."
+
+Switch to the HubSpot tab and show the contact.
 
 ---
 
-## Things not to do
+## 2:30  Scoring, and why this way (1 min 30)
 
-- Don't apologise for scope or call it "just a prototype". You scoped deliberately; say so.
-- Don't read the screen out loud. Say what it means.
-- Don't demo Settings. Mention the key handling in the build section and move on.
-- Don't claim the conference attendance figures are verified. They're real events with real
-  dates; the ICP estimates are clearly labelled as human estimates, and that's the honest position.
+Back to Conferences. Open the weights panel.
 
-## If they ask
+> "Four inputs, weighted. ICP fit at forty, because a room of the wrong
+> people cannot be rescued by anything else. Seniority at twenty, whether
+> the room can sign. Cost per conversation at twenty. Strategic reach at
+> twenty, the regions and partners Grain actually wants.
+>
+> Three of those are a human's judgement, entered once per event. The
+> fourth, cost per conversation, is arithmetic: ticket plus travel from Tel
+> Aviv, divided by how many ICP conversations two people can physically have
+> in the days available."
 
-**"How did you pick the weights?"** — Grain sells embedded FX to platforms, so ICP density gets
-the most weight and partner presence matters separately from direct buyers. But the sliders exist
-precisely because I shouldn't be the one deciding that — the sales lead should.
+Drag the ICP fit slider. Let the table re-rank live.
 
-**"How would you validate the score?"** — Backtest it. Take last year's events, the leads captured
-at each, and which closed. Cost per closed contact against the predicted tier. If A-tiers don't
-outperform C-tiers the model is wrong, and I'd rather find that out than defend it.
+> "Weights are editable because a sales lead will disagree with mine, and
+> they should be able to argue with the tool instead of ignoring it.
+>
+> No model touches this number. A score a sales lead cannot reproduce is a
+> score they will not trust, and a model asked to do arithmetic will quietly
+> get it wrong."
 
-**"Why not just use a CRM?"** — HubSpot stores contacts. It doesn't tell you that the same person
-has been met three times under two spellings and is stalling. This is the layer that turns
-encounters into a judgement, and it pushes the result *into* HubSpot rather than replacing it.
+Open a drawer, click the AI read.
 
-**"What's the weakest part?"** — The ICP density and seniority figures are my estimates, not
-measured. That's why the tool shows its arithmetic — so a sales lead can disagree with an input
-rather than with the whole score. And everything is in localStorage, which is right for this
-build and wrong for a team.
+> "What the model does do is argue with the result. Same four numbers, and
+> it is asked what the score structurally cannot see. That is judgement, not
+> arithmetic, which is the line I drew through the whole tool."
+
+---
+
+## 4:00  Cross-conference tracking (2 min)
+
+Contacts.
+
+> "Twenty-six people, and not one row here was typed as a contact. Every one
+> is assembled from meetings, because a meeting is what actually happened
+> and a contact record is an opinion about it."
+
+### The case for going back
+
+Open Daniel Mercer.
+
+> "Daniel Mercer, Head of FX Partnerships at Nuvei. Met three times across
+> ten months. Dubai in February, London in June, Visa Payments Forum last
+> week. Cold, then warm, then hot.
+>
+> Lead status says Active, and underneath it says why: named a budget or a
+> date at the most recent meeting. That is the case for booking a call this
+> week, and no single rep had it. Idan met him once, Noa met him twice."
+
+### The tire-kicker
+
+Open Marco Ferrari.
+
+> "Marco Ferrari, Head of Treasury at Satispay. Also three meetings. Also a
+> good-looking title at a good-looking company.
+>
+> Dormant. Met three times and never once named a budget or a date. Three
+> polite conversations is not a warming relationship, and the brief asked
+> for exactly this distinction. Marco and Daniel look identical on a
+> spreadsheet."
+
+### The edge cases
+
+> "Four of them, and they are where this got interesting."
+
+Open Beatrice Lindqvist.
+
+> "Name variants. She was logged as Bea at one event and Beatrice at the
+> next. Jaro-Winkler plus a nickname map, and above eighty-five they merge
+> without asking."
+
+Show the review queue.
+
+> "Between fifty and eighty-five, a human decides. Yusuf Al-Rashid and
+> Yousef Alrashid at Tap Payments score seventy-eight. Same person, almost
+> certainly, but one record has no email, so the tool asks instead of
+> guessing."
+
+Point at the David Cohen pair.
+
+> "The other one is the opposite problem. David Cohen at Riskified and David
+> Cohen at Payoneer. Fifty-six. Same name, different employer. That is
+> either a job change, which is the single most useful thing a sales team
+> can learn at a conference, or two different people. The tool will not
+> decide that, and it does not average it away."
+
+Show the nudge on Beatrice.
+
+> "And the nudge. Silent for ninety-one days against their usual gap of
+> twenty-seven. Not a fixed timer, their own rhythm, because a quarterly
+> contact going quiet for a month means nothing and a monthly one going
+> quiet for three is the whole signal."
+
+Open carly.
+
+> "Last one. The rule says New, a rep has overridden it to Dormant, and the
+> tool shows both. The rule and the human are allowed to visibly disagree."
+
+---
+
+## 6:00  Where AI is, and why there (1 min 15)
+
+> "Four AI features. The rule I used everywhere: rules where the answer must
+> be reproducible, AI where the job genuinely needs judgement."
+
+1. **Conference discovery.** Conferences, Find conferences with AI.
+
+> "Runs weekly, and on demand. Claude with web search on, told what Grain's
+> buyers look like and told that a blank field is a correct answer. It
+> brings back events nobody on the team had heard of, tagged AI sourced,
+> with the page it read. No tier, because it does not get to score them. A
+> person fills in the estimates. Finding an event is recall. Deciding
+> whether it is worth a flight is judgement about this pipeline."
+
+2. **The relationship arc.** Open a contact, Draft the follow-up.
+
+> "Fires after every meeting, including the first. It reads the note history
+> and writes the follow-up the rep would write, signed by the rep who logged
+> the meeting, with their calendar link. It goes to HubSpot as a draft.
+> Never sent. Sending stays with a person."
+
+3. **The score interpreter.** Already shown.
+
+4. **Identity adjudication.** In the review queue.
+
+> "When two records are ambiguous, the model gets the same evidence the rep
+> would and says which way it leans. It advises. It does not merge."
+
+> "The key never touches the browser. Every call goes through n8n, so
+> whoever opens this link gets real answers without pasting anything, and
+> the webhook only accepts three named tasks so the URL is not a free LLM
+> proxy for anyone who finds it."
+
+---
+
+## 7:15  How I built it (45 sec)
+
+> "I built this with Claude, and the honest version is that it was fastest
+> at things I could check and slowest at things I could not.
+>
+> Where it helped: the identity matching, the arithmetic, the n8n flows,
+> and rewriting the same table three times when I changed my mind about the
+> columns.
+>
+> Where it got in the way: it happily builds features nobody asked for. At
+> one point I had six AI features and three of them were unreachable from
+> the interface. I deleted them. The version you are looking at has fewer
+> features than the one I had on day one, and it is better.
+>
+> The other thing it cost me was trusting output I had not verified. The
+> HubSpot push looked correct and silently failed for a day, because the
+> code posted to an endpoint that only accepts PATCH and the error was
+> swallowed three nodes downstream. Reading the actual response is what
+> found it, not reading the code."
+
+---
+
+## 8:00  Another week (30 sec)
+
+> "Two things, not five.
+>
+> First, the nudge is still reactive. It tells you someone went quiet after
+> they have gone quiet. With a week I would make it forward-looking: this
+> person is at an event you are already attending in six weeks, here are the
+> three things they said last time, book them now.
+>
+> Second, coverage assumes a rep is interchangeable. They are not. Idan has
+> met every travel contact in here. The tool should know that and route by
+> relationship, not by who has a free slot."
+
+> "That is the tool. The live link and the repo are in the email."
+
+---
+
+## Cut these if you run long
+
+- The Plan the year screen. It is the least surprising part.
+- The score interpreter. The arc is the better AI demo.
+- The n8n canvas. Say the sentence, do not show the flow.
