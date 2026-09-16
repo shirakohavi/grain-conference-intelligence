@@ -319,3 +319,16 @@ body{letter-spacing:0}
 .filter-bar select.filter-control{max-width:150px}
 .filter-bar .filter-input{flex:0 1 210px;min-width:170px}
 .repfilter{font-size:13px;font-weight:500;color:var(--ink2);padding:0 12px}
+
+/* Vertical families, in lighter pastels than the status tags so the
+   column reads as a category, not an alert. */
+.pill.blue{background-color:#EEF4FF;color:#3A6FD8}
+.pill.teal{background-color:#EAF7F6;color:#2C7F86}
+.pill.rose{background-color:#FDF0F5;color:#B0527F}
+.pill.sand{background-color:#FDF6EA;color:#9A7430}
+.pill.orange{background-color:#FDF1E9;color:#AD6A35}
+.tags .pill:not(.blue):not(.teal):not(.rose):not(.sand):not(.orange):not(.outline){background-color:#F3F5FA;color:#6B739A}
+
+/* A lead status a rep set by hand: a thin outline in its own colour,
+   the same "not from the rule" signal the borrowed ICP band uses. */
+.status.overridden{box-shadow:inset 0 0 0 1px currentColor}

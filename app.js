@@ -56,9 +56,14 @@ const identities = () => resolveIdentities(allEncounters(), S.decisions);
 
 /* Three tag colours, not twenty-six. Blue marks payments and fintech, sand
    marks travel, Grain's two core verticals, everything else stays grey. */
+/* Colour is a vertical family, not decoration: a rep reads the column by
+   hue. Payments first so "Open Banking" lands there and not in finance. */
 const TAG_TONE = v =>
-  /payment|psp|acquir|open banking|fintech|banking|treasury|inclusion|stablecoin|digital assets/i.test(v) ? "blue"
-  : /travel|luxury/i.test(v) ? "sand" : "";
+  /payment|psp|acquir|open banking/i.test(v) ? "blue"
+  : /fintech|banking|treasury|inclusion/i.test(v) ? "teal"
+  : /commerce|marketplace|retail/i.test(v) ? "rose"
+  : /travel|luxury/i.test(v) ? "sand"
+  : /stablecoin|digital asset|crypto/i.test(v) ? "orange" : "";
 const tag = v => `<span class="pill ${TAG_TONE(v)}">${esc(v)}</span>`;
 
 /* Who is logging. Set in Settings, and field mode keeps its own copy because
