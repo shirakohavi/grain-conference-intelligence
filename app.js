@@ -1313,7 +1313,7 @@ function arcHTML(a) {
     ${a.avoid ? `<div class="arcline"><span>Avoid</span><p>${esc(a.avoid)}</p></div>` : ""}
     ${em.body ? `<div class="draft">
       <div class="spread">
-        <div class="tiny dim">Draft, not sent. HubSpot owns sending.</div>
+        <div class="tiny dim">Goes to HubSpot as a draft on their timeline. Nothing is sent from here.</div>
         <button class="btn ghost sm" onclick="copyDraft(this)">Copy</button>
       </div>
       <div class="draftsub">${esc(em.subject || "")}</div>
@@ -1453,23 +1453,36 @@ function buildPayload(c) {
        push: the notes are what make a repeat contact worth anything, and
        they are useless if they only exist in here. */
     notes: c.encounters.map(e => ({ timestamp: e.at, body: `[${e.confName}] ${e.note}, logged by ${e.rep}` })),
-    /* A task, not a note, and only when a rule says something happened.
-       A note sits there; a task turns up in the rep's HubSpot queue with the
-       draft already written. Nothing is ever sent from here: HubSpot owns
-       sending, and the one action that touches a customer keeps a human on
-       it. No trigger, no task, no noise. */
-    task: (c.needsNudge && arc && arc.email) ? {
-      subject: `Follow up: ${c.name}`,
-      dueInDays: 2,
+    /* Two different readers, so two different objects.
+
+       The draft is what the PROSPECT would receive, so it carries the email
+       and nothing else. No internal reasoning, no "why now", nothing that
+       would be embarrassing if someone hit send without reading. It goes to
+       HubSpot as a real draft email engagement, never as a sent one: HubSpot
+       owns sending, and the one action that touches a customer keeps a human
+       on it.
+
+       The read is what the REP needs and the prospect must never see, so it
+       goes on the timeline as an internal note beside the draft.
+
+       Both only exist when a rule says something happened. No trigger, no
+       draft, no note, no noise. */
+    draft: (c.needsNudge && arc && arc.email && arc.email.body) ? {
+      to: c.email || null,
+      subject: arc.email.subject || `Following up from ${last.confName}`,
+      body: arc.email.body,
+    } : null,
+
+    internalNote: (c.needsNudge && arc) ? {
       body: [
         `Why now: ${c.nudgeReason}.`,
+        arc.arc ? `What changed: ${arc.arc}` : "",
+        arc.why ? `Read: ${arc.why}` : "",
         arc.nudge ? `Next step: ${arc.nudge}` : "",
+        arc.avoid ? `Avoid: ${arc.avoid}` : "",
         "",
-        "Draft, not sent:",
-        `Subject: ${arc.email.subject || ""}`,
-        "",
-        arc.email.body || "",
-      ].filter(x => x !== null).join("\n"),
+        "A draft reply is on this timeline. Nothing has been sent.",
+      ].filter(Boolean).join("\n"),
     } : null,
   };
 }

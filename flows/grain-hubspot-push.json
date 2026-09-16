@@ -6,24 +6,32 @@
         "httpMethod": "POST",
         "path": "grain-hubspot-push",
         "responseMode": "responseNode",
-        "options": { "allowedOrigins": "*" }
+        "options": {
+          "allowedOrigins": "*"
+        }
       },
       "id": "webhook",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "webhookId": "grain-hubspot-push"
     },
     {
       "parameters": {
-        "jsCode": "// The browser sends the whole contact. Split it into the three HubSpot\n// calls that follow, so each node has exactly what it needs and nothing\n// downstream has to reach back into the raw body.\nconst b = $input.first().json.body || $input.first().json;\nif (!b.properties || !b.properties.email) {\n  throw new Error('No email on the payload. HubSpot needs one to dedupe on.');\n}\nreturn [{ json: {\n  email: b.properties.email,\n  properties: b.properties,\n  notes: b.notes || [],\n  task: b.task || null,\n} }];"
+        "jsCode": "// The browser sends the whole contact. Split it into the calls that follow,\n// so each node has exactly what it needs and nothing downstream has to\n// reach back into the raw body.\nconst b = $input.first().json.body || $input.first().json;\nif (!b.properties || !b.properties.email) {\n  throw new Error('No email on the payload. HubSpot needs one to dedupe on.');\n}\nreturn [{ json: {\n  email: b.properties.email,\n  properties: b.properties,\n  notes: b.notes || [],\n  draft: b.draft || null,\n  internalNote: b.internalNote || null,\n} }];"
       },
       "id": "shape",
       "name": "Shape the payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [200, 0]
+      "position": [
+        200,
+        0
+      ]
     },
     {
       "parameters": {
@@ -34,13 +42,23 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ properties: $json.properties }) }}",
-        "options": { "response": { "response": { "neverError": true, "fullResponse": true } } }
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
       },
       "id": "upsert",
       "name": "Upsert contact by email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [400, 0],
+      "position": [
+        400,
+        0
+      ],
       "notes": "PATCH-by-email creates or updates in one call, so re-pushing the same person never makes a duplicate."
     },
     {
@@ -51,18 +69,37 @@
       "name": "Exists or create",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [600, 0]
+      "position": [
+        600,
+        0
+      ]
     },
     {
       "parameters": {
-        "conditions": { "options": { "version": 2 }, "combinator": "and",
-          "conditions": [{ "operator": { "type": "boolean", "operation": "true" }, "leftValue": "={{ $json.created }}" }] }
+        "conditions": {
+          "options": {
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.created }}"
+            }
+          ]
+        }
       },
       "id": "ifcreate",
       "name": "Needs creating?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [800, 0]
+      "position": [
+        800,
+        0
+      ]
     },
     {
       "parameters": {
@@ -79,17 +116,23 @@
       "name": "Create contact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, -120]
+      "position": [
+        1000,
+        -120
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// One note per encounter, each associated to the contact. Association\n// type 202 is note-to-contact.\nconst src = $('Shape the payload').first().json;\nlet contactId = $json.contactId;\nif (!contactId && $json.id) contactId = $json.id;\nreturn (src.notes || []).map(n => ({ json: {\n  contactId,\n  properties: { hs_timestamp: n.timestamp, hs_note_body: n.body },\n  associations: [{ to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] }],\n} }));"
+        "jsCode": "// One item per note, each associated to the contact. Association type 202\n// is note-to-contact. The internal read rides along as one more note, so\n// the rep's reasoning sits on the timeline beside the draft and never\n// inside the email the prospect would receive.\nconst src = $('Shape the payload').first().json;\nlet contactId = $json.contactId;\nif (!contactId && $json.id) contactId = $json.id;\nconst all = [...(src.notes || [])];\nif (src.internalNote) all.push({ timestamp: new Date().toISOString(), body: src.internalNote.body });\nreturn all.map(n => ({ json: {\n  contactId,\n  properties: { hs_timestamp: n.timestamp, hs_note_body: n.body },\n  associations: [{ to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] }],\n} }));"
       },
       "id": "fanout",
       "name": "One item per note",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 0]
+      "position": [
+        1200,
+        0
+      ]
     },
     {
       "parameters": {
@@ -106,65 +149,202 @@
       "name": "Write the meeting notes",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 0]
+      "position": [
+        1400,
+        0
+      ]
     },
     {
       "parameters": {
-        "conditions": { "options": { "version": 2 }, "combinator": "and",
-          "conditions": [{ "operator": { "type": "object", "operation": "notEmpty" }, "leftValue": "={{ $('Shape the payload').first().json.task }}" }] }
+        "conditions": {
+          "options": {
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $('Shape the payload').first().json.draft }}"
+            }
+          ]
+        }
       },
       "id": "iftask",
-      "name": "Is there a nudge?",
+      "name": "Is there a draft?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1600, 0],
-      "notes": "No trigger, no task. The app only attaches one when a rule says something happened."
+      "position": [
+        1600,
+        0
+      ],
+      "notes": "No trigger, no draft. The app only attaches one when a rule says something happened."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.hubapi.com/crm/v3/objects/tasks",
+        "url": "https://api.hubapi.com/crm/v3/objects/emails",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppTokenApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { hs_timestamp: new Date(Date.now() + ($('Shape the payload').first().json.task.dueInDays || 2) * 86400000).toISOString(), hs_task_subject: $('Shape the payload').first().json.task.subject, hs_task_body: $('Shape the payload').first().json.task.body, hs_task_status: 'NOT_STARTED', hs_task_priority: 'HIGH', hs_task_type: 'EMAIL' }, associations: [{ to: { id: $('One item per note').first().json.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 204 }] }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ properties: { hs_timestamp: new Date().toISOString(), hs_email_direction: 'DRAFT_EMAIL', hs_email_status: 'DRAFT', hs_email_subject: $('Shape the payload').first().json.draft.subject, hs_email_html: $('Shape the payload').first().json.draft.body.split('\\n').map(l => '<p>' + l + '</p>').join(''), hs_email_to_email: $('Shape the payload').first().json.draft.to }, associations: [{ to: { id: $('One item per note').first().json.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 198 }] }] }) }}",
         "options": {}
       },
-      "id": "task",
-      "name": "Create the follow-up task",
+      "id": "draft",
+      "name": "Create the draft email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, -120],
-      "notes": "A task, not a note. A note sits there; a task turns up in the rep's queue with the draft already written. The draft is never sent from here."
+      "position": [
+        1800,
+        -120
+      ],
+      "notes": "A draft, never a sent email. hs_email_status DRAFT and direction DRAFT_EMAIL are both real options on this portal's schema, checked rather than assumed. Association 198 is email-to-contact. Nothing here can send: HubSpot does that, with a human pressing the button."
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, contactId: $('One item per note').first().json.contactId, notes: ($('Shape the payload').first().json.notes || []).length, task: !!$('Shape the payload').first().json.task }) }}"
+        "responseBody": "={{ JSON.stringify({ ok: true, contactId: $('One item per note').first().json.contactId, notes: ($('Shape the payload').first().json.notes || []).length, draft: !!$('Shape the payload').first().json.draft }) }}"
       },
       "id": "respond",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2000, 0]
+      "position": [
+        2000,
+        0
+      ]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Shape the payload", "type": "main", "index": 0 }]] },
-    "Shape the payload": { "main": [[{ "node": "Upsert contact by email", "type": "main", "index": 0 }]] },
-    "Upsert contact by email": { "main": [[{ "node": "Exists or create", "type": "main", "index": 0 }]] },
-    "Exists or create": { "main": [[{ "node": "Needs creating?", "type": "main", "index": 0 }]] },
-    "Needs creating?": { "main": [
-      [{ "node": "Create contact", "type": "main", "index": 0 }],
-      [{ "node": "One item per note", "type": "main", "index": 0 }]] },
-    "Create contact": { "main": [[{ "node": "One item per note", "type": "main", "index": 0 }]] },
-    "One item per note": { "main": [[{ "node": "Write the meeting notes", "type": "main", "index": 0 }]] },
-    "Write the meeting notes": { "main": [[{ "node": "Is there a nudge?", "type": "main", "index": 0 }]] },
-    "Is there a nudge?": { "main": [
-      [{ "node": "Create the follow-up task", "type": "main", "index": 0 }],
-      [{ "node": "Respond", "type": "main", "index": 0 }]] },
-    "Create the follow-up task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Shape the payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape the payload": {
+      "main": [
+        [
+          {
+            "node": "Upsert contact by email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert contact by email": {
+      "main": [
+        [
+          {
+            "node": "Exists or create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exists or create": {
+      "main": [
+        [
+          {
+            "node": "Needs creating?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs creating?": {
+      "main": [
+        [
+          {
+            "node": "Create contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "One item per note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create contact": {
+      "main": [
+        [
+          {
+            "node": "One item per note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per note": {
+      "main": [
+        [
+          {
+            "node": "Write the meeting notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write the meeting notes": {
+      "main": [
+        [
+          {
+            "node": "Is there a draft?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is there a draft?": {
+      "main": [
+        [
+          {
+            "node": "Create the draft email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create the draft email": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }
