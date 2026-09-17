@@ -185,6 +185,32 @@ tr.grp td{background:#F8FAFE}
 .cal-row:hover{background:#F8FAFE}
 .cal-bar{border-radius:7px;font-weight:500}
 .cal-month{color:var(--ink3);font-weight:500}
+
+/* Tier on the calendar, and in the key underneath it.
+
+   The four washes these replace were #D3DEF6, #DCE7FB, #E8EBF3 and #F1F3F9:
+   four pale blues within a few percent of each other, which made the key
+   read as four identical swatches and made an A and a D look the same on
+   the timeline. They now step properly, and they follow the same logic as
+   the tier pills in the table: A carries the most weight, B sits on the
+   accent, C and D recede. D gets a hairline or it disappears on white. */
+.cal-bar.tA{background:#B9C7E8;color:#1E2B60}
+.cal-bar.tB{background:#CCDEFC;color:#1B5FD9}
+.cal-bar.tC{background:#E3E8F3;color:#5C6590}
+.cal-bar.tD{background:#F4F6FB;color:#9AA3C4;box-shadow:inset 0 0 0 1px #E4E9F4}
+.cal-bar.on.tA{background:var(--ink);color:#fff;box-shadow:none}
+.cal-bar.on.tB{background:var(--accent);color:#fff;box-shadow:none}
+.cal-bar.on.tC{background:#8D92B1;color:#fff;box-shadow:none}
+.cal-bar.on.tD{background:#C2CAE2;color:#2B3674;box-shadow:none}
+/* A clash outline has to survive whatever fill is underneath it. */
+.cal-bar.clash{box-shadow:inset 0 0 0 1.5px #D0342C}
+
+.cal-key .k{width:16px;height:10px;border-radius:4px}
+.cal-key .k.tA{background:#B9C7E8}
+.cal-key .k.tB{background:#CCDEFC}
+.cal-key .k.tC{background:#E3E8F3}
+.cal-key .k.tD{background:#F4F6FB;box-shadow:inset 0 0 0 1px #E4E9F4}
+.cal-key .k.on{background:var(--ink)}
 .box{border-radius:var(--r)}
 .boxtitle{font-size:15px;font-weight:600;letter-spacing:-.02em}
 .seg{border-radius:10px;padding:3px;gap:2px;background:var(--line2);border:0}
