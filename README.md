@@ -55,7 +55,7 @@ before the note is typed, because what gets lost at a booth is the half-finished
 form. It never shows a prospect the pipeline.
 
 **Settings.** The n8n base URL, the HubSpot relay, and an optional model key.
-Nothing is hardcoded.
+Every one of them is editable, and no key is in the source.
 
 ---
 
@@ -184,10 +184,26 @@ Open `index.html`. That is the whole build step.
 
 Hosting is GitHub Pages from `main`, root folder. `DEPLOY.md` has the steps.
 
-Configuration lives in Settings and in this browser only. Nothing is hardcoded
-and nothing is committed. The Supabase key in `config.js` is the publishable
-one, which is public by design and gated by row-level security; the
-`service_role` key is not in this repo and never has been.
+### Keys
+
+No API key is in this repository, and none is ever sent to a browser.
+
+The Anthropic key, the HubSpot private app token and the Supabase
+`service_role` key all live in the n8n instance's credential store. The page
+posts to a webhook and gets back an answer. That is the reason the AI calls are
+relayed instead of being made from the page: a key in client-side JavaScript is
+readable by anyone who opens the site.
+
+What `config.js` does contain is two addresses. The Supabase publishable key is
+public by design and gated by row-level security. The n8n base URL is an
+endpoint, not a credential, and it ships filled in so that the AI features are
+live the moment you open the site with nothing to configure.
+
+Both are overridable in Settings, which is where a user puts their own. Point
+the n8n field at your own instance, or paste your own Anthropic key to call the
+model directly from the browser, or clear the n8n field to fall back to the
+written demo responses. Whatever you set is stored in your browser only and
+nothing is committed.
 
 Updating the conference list needs no developer: Add conference on the
 Conferences page, or Edit on any row.

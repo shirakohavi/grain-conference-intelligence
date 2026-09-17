@@ -34,7 +34,7 @@ const AI = (() => {
         brief's "configurable by the user, not hardcoded" literally.
      3. Demo responses, so the tool never dead-ends.
      ──────────────────────────────────────────────────────────────────── */
-  const n8n = () => (localStorage.getItem("n8n_base") || N8N_BASE || "").replace(/\/+$/, "");
+  const n8n = () => n8nBase();   // config.js: saved value, else the shipped default
   const viaProxy = () => !!n8n();
 
   async function proxy(task, system, user) {

@@ -1890,9 +1890,12 @@ VIEWS_SETTINGS = () => {
       <div class="kv">
         <label>Base URL</label>
         <input class="inp" placeholder="https://your-n8n.example.com"
-          value="${esc(localStorage.getItem("n8n_base") || "")}"
+          value="${esc(n8nBase())}"
           oninput="localStorage.setItem('n8n_base',this.value.replace(/\\/+$/,''))">
       </div>
+      <div class="tiny dim" style="margin-top:7px">Ships pointing at a relay I host, so the AI
+        features work with nothing to paste. Point it at your own n8n, or clear the field to use
+        the written demo responses. No key is in the source: they live in n8n's credential store.</div>
       <div class="row" style="margin-top:11px">
         <button class="btn" onclick="testProxy()">Test</button>
         <span id="proxytest" class="tiny"></span>
@@ -1944,7 +1947,7 @@ VIEWS_SETTINGS = () => {
 };
 async function testProxy() {
   const el = document.getElementById("proxytest");
-  const base = localStorage.getItem("n8n_base");
+  const base = n8nBase();
   if (!base) { el.innerHTML = `<b style="color:var(--bad)">No URL set.</b>`; return; }
   el.innerHTML = `<span class="spin"></span> Calling…`;
   try {
@@ -2104,7 +2107,7 @@ S.newConf = null;
    about whether to go is still the team's.
    ══════════════════════════════════════════════════════════════════════ */
 async function findConferences() {
-  const base = (localStorage.getItem("n8n_base") || "").replace(/\/+$/, "");
+  const base = n8nBase();
   if (!base) { toast("Set the n8n base URL in Settings first.", true); return; }
   if (S.busy.discover) return;
   S.busy.discover = true; render();
