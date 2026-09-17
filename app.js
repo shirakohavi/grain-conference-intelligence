@@ -393,6 +393,7 @@ function drawConf(ai) {
         `ticket ${eur(c.ticketEur)}`].filter(Boolean).join(" · ")}</div>
     </div><div class="row" style="gap:6px;flex-wrap:nowrap">
       <button class="btn ghost sm" onclick="openEditConference('${c.id}')">Edit</button>
+      <button class="btn ghost sm danger" onclick="deleteConf('${c.id}')">Delete</button>
       <button class="x" onclick="closeDrawer()">×</button></div></div>
     ${c.aiSourced ? `<div class="alert" style="margin-top:10px">
       <b>AI sourced.</b> Found by the weekly web search${
@@ -1713,6 +1714,7 @@ function drawContact(c) {
       <div class="row" style="margin-top:9px;gap:7px">
         <button class="btn ghost sm" onclick="openAddPerson(null, '${c.id}')">Log a meeting</button>
         <button class="btn ghost sm" onclick="openEditContact('${c.id}')">Edit details</button>
+        <button class="btn ghost sm danger" onclick="deleteContact('${c.id}')">Delete</button>
       </div>
     </div><button class="x" onclick="closeDrawer()">×</button></div>`, `
     <div class="verdictbar">
@@ -2123,6 +2125,47 @@ async function findConferences() {
   } finally {
     S.busy.discover = false; render();
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DELETING
+
+   Both confirms name what is about to go, in numbers, because "are you
+   sure" is a question nobody reads. Neither is undoable, and neither
+   pretends otherwise.
+   ══════════════════════════════════════════════════════════════════════ */
+async function deleteConf(id) {
+  const c = confById(id); if (!c) return;
+  const met = allEncounters().filter(e => e.confId === id).length;
+  if (met) {
+    toast(`${c.name} has ${met} meeting${met > 1 ? "s" : ""} logged at it. Those are the record of who was met there, so the event stays.`, true);
+    return;
+  }
+  if (!confirm(`Delete ${c.name}?\n\nThis cannot be undone.`)) return;
+  try {
+    await DB.deleteConference(id);
+    closeDrawer(); await reload();
+    toast(`${c.name} deleted.`);
+  } catch (e) { toast("Couldn't delete: " + e.message, true); }
+}
+
+async function deleteContact(contactId) {
+  const { contacts } = identities();
+  const c = contacts.find(x => x.id === contactId); if (!c) return;
+  const n = c.encounters.length;
+  /* A merged contact spans more than one lead row, and all of them go. */
+  const leadIds = [...new Set(c.encounters.map(e => e.leadId))];
+  if (!confirm(
+    `Delete ${c.name}?\n\n` +
+    `${n} meeting${n > 1 ? "s" : ""} will go with them` +
+    (leadIds.length > 1 ? `, across ${leadIds.length} merged records` : "") +
+    `.\n\nThis cannot be undone, and it does not remove them from HubSpot.`
+  )) return;
+  try {
+    await DB.deleteContact(leadIds);
+    closeDrawer(); await reload();
+    toast(`${c.name} deleted.`);
+  } catch (e) { toast("Couldn't delete: " + e.message, true); }
 }
 
 function openAddConference() {

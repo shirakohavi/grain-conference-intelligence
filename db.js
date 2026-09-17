@@ -147,6 +147,37 @@ const DB = (() => {
     if (error) throw new Error(error.message);
   }
 
+  /* Deleting a conference and deleting a person are different problems.
+
+     A conference with meetings logged at it cannot go: the meetings are the
+     record of who was met and where, and orphaning them would quietly break
+     every contact who was met there. So the caller checks first and the UI
+     says how many, rather than cascading and losing history nobody asked to
+     lose.
+
+     A person is the opposite. Their meetings only describe them, so they go
+     with them, and a contact may span several lead rows after a merge, which
+     is why this takes a list. */
+  async function deleteConference(id) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const { count, error: e1 } = await sb.from("encounters")
+      .select("id", { count: "exact", head: true }).eq("conference_id", id);
+    if (e1) throw new Error(e1.message);
+    if (count) throw new Error(`${count} meeting${count > 1 ? "s were" : " was"} logged at this event`);
+    const { error } = await sb.from("conferences").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async function deleteContact(leadIds) {
+    if (!sb) throw new Error(NO_CLIENT);
+    const ids = [...new Set(leadIds)].filter(Boolean);
+    if (!ids.length) return;
+    const { error: e1 } = await sb.from("encounters").delete().in("lead_id", ids);
+    if (e1) throw new Error(e1.message);
+    const { error: e2 } = await sb.from("leads").delete().in("id", ids);
+    if (e2) throw new Error(e2.message);
+  }
+
   async function updateConference(id, fields) {
     if (!sb) throw new Error(NO_CLIENT);
     const { error } = await sb.from("conferences").update(fields).eq("id", id);
@@ -198,5 +229,5 @@ const DB = (() => {
 
   return { sb, loadAll, findPossibleDuplicates, searchCandidates, upsertLead, addEncounter,
            setConferenceStatus, updateConference, addConference, updateLead,
-           updateEncounter, onChange };
+           updateEncounter, deleteConference, deleteContact, onChange };
 })();

@@ -180,6 +180,11 @@ tr.grp td{background:#F8FAFE}
 .actpop{border-radius:12px;box-shadow:var(--sh-float);padding:8px}
 .actopt{border-radius:8px;padding:8px 10px}
 
+/* Destructive, and quiet until you mean it. Red on hover only, so the
+   drawer does not lead with the one button nobody came for. */
+.btn.ghost.danger{color:var(--ink3)}
+.btn.ghost.danger:hover{color:#B4332B;background:#FCEBEA;border-color:#F3D3D1}
+
 /* ── Plan the year ───────────────────────────────────────────────────── */
 .cal-row{border-bottom-color:var(--line2)}
 .cal-row:hover{background:#F8FAFE}
