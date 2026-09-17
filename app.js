@@ -948,39 +948,6 @@ VIEWS_PLAN = () => {
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <div class="pad">
-      <div class="spread">
-        <h3 style="margin:0">Who covers what</h3>
-        <span class="tiny dim">${cover.worthCount} events worth attending, ${cover.avg} each on average</span>
-      </div>
-      ${cover.unassigned.length ? `<button class="needbar" style="margin-top:10px"
-        onclick="S.planFilter='worth';render()">
-        <span class="needdot"></span>${cover.unassigned.length} worth attending with nobody assigned:
-        ${cover.unassigned.slice(0, 3).map(x => esc(x.c.name)).join(", ")}${
-          cover.unassigned.length > 3 ? ` and ${cover.unassigned.length - 3} more` : ""}</button>` : ""}
-      <div class="covgrid">
-        ${cover.rows.map(r => `
-          <div class="covrow">
-            <div class="covwho">${avatar(r.rep)}<div>
-              <b>${esc(r.rep.name)}</b>
-              <div class="tiny dim">${esc(rshort(r.rep.region || ""))}</div></div></div>
-            <div class="covev">
-              ${r.events.length
-                ? r.events.slice(0, 4).map(x =>
-                    `<button class="pill conftag" title="${esc(x.c.name)}" onclick="openConf('${x.c.id}')">${esc(x.c.name)}</button>`).join("")
-                  + (r.events.length > 4 ? `<span class="pill outline">+${r.events.length - 4}</span>` : "")
-                : `<span class="dim tiny">Nothing booked</span>`}
-            </div>
-            <div class="covflag">
-              ${r.overloaded ? `<span class="pill warn" title="More than half again the team average">carrying ${r.count}</span>` : ""}
-              ${r.quiet ? `<span class="pill outline" title="Longest stretch from today with nothing booked">${r.quietDays}d clear</span>` : ""}
-            </div>
-          </div>`).join("")}
-      </div>
-    </div>
-  </div>
-
   ${clusters.length ? `
   <div class="spread" style="margin-top:22px;align-items:baseline">
     <h3 style="margin:0">Trips you could combine</h3>
@@ -1035,7 +1002,44 @@ VIEWS_PLAN = () => {
             <span class="tiny dim">${fmtDate(c.start)}</span>
           </button>`).join("")}
       </div>`).join("")}
-  </div>` : ""}`;
+  </div>` : ""}
+
+  ${/* Who covers what sits last on purpose. The calendar, the trips and the
+       gaps are all about which events to attend, which is the decision this
+       page exists for. Who goes is the decision after that one, and it used
+       to interrupt the first. */""}
+  <div class="card" style="margin-top:16px">
+    <div class="pad">
+      <div class="spread">
+        <h3 style="margin:0">Who covers what</h3>
+        <span class="tiny dim">${cover.worthCount} events worth attending, ${cover.avg} each on average</span>
+      </div>
+      ${cover.unassigned.length ? `<button class="needbar" style="margin-top:10px"
+        onclick="S.planFilter='worth';render()">
+        <span class="needdot"></span>${cover.unassigned.length} worth attending with nobody assigned:
+        ${cover.unassigned.slice(0, 3).map(x => esc(x.c.name)).join(", ")}${
+          cover.unassigned.length > 3 ? ` and ${cover.unassigned.length - 3} more` : ""}</button>` : ""}
+      <div class="covgrid">
+        ${cover.rows.map(r => `
+          <div class="covrow">
+            <div class="covwho">${avatar(r.rep)}<div>
+              <b>${esc(r.rep.name)}</b>
+              <div class="tiny dim">${esc(rshort(r.rep.region || ""))}</div></div></div>
+            <div class="covev">
+              ${r.events.length
+                ? r.events.slice(0, 4).map(x =>
+                    `<button class="pill conftag" title="${esc(x.c.name)}" onclick="openConf('${x.c.id}')">${esc(x.c.name)}</button>`).join("")
+                  + (r.events.length > 4 ? `<span class="pill outline">+${r.events.length - 4}</span>` : "")
+                : `<span class="dim tiny">Nothing booked</span>`}
+            </div>
+            <div class="covflag">
+              ${r.overloaded ? `<span class="pill warn" title="More than half again the team average">carrying ${r.count}</span>` : ""}
+              ${r.quiet ? `<span class="pill outline" title="Longest stretch from today with nothing booked">${r.quietDays}d clear</span>` : ""}
+            </div>
+          </div>`).join("")}
+      </div>
+    </div>
+  </div>`;
 };
 
 
